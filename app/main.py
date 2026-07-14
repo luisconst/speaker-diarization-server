@@ -172,15 +172,18 @@ app.include_router(streaming_router, prefix="/api/v1")  # WebSocket streaming
 app.include_router(mcp_router)  # MCP at /mcp
 
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Mount static files folder
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "Speaker Diarization API",
-        "docs": "/docs",
-        "api": "/api/v1",
-        "mcp": "/mcp (MCP JSON-RPC interface)",
-    }
+    """Serve frontend index.html"""
+    return FileResponse("app/static/index.html")
+
 
 
 if __name__ == "__main__":

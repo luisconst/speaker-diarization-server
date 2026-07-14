@@ -48,12 +48,30 @@ def get_engine():
 @router.get("/status", response_model=StatusResponse)
 async def get_status():
     """Get system status"""
+    gpu_available = torch.cuda.is_available()
+    device_str = "CPU"
+    allocated = None
+    total = None
+    
+    if gpu_available:
+        try:
+            device_name = torch.cuda.get_device_name(0)
+            device_str = f"GPU: {device_name}"
+            allocated = torch.cuda.memory_allocated(0) / (1024 ** 3)
+            total = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        except Exception as e:
+            logger.warning(f"Failed to query GPU properties: {e}")
+            device_str = "CUDA GPU"
+    
     return StatusResponse(
         status="online",
         message="Speaker diarization service is running",
-        gpu_available=torch.cuda.is_available(),
-        device=str(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        gpu_available=gpu_available,
+        device=device_str,
+        gpu_vram_allocated_gb=allocated,
+        gpu_vram_total_gb=total
     )
+
 
 
 @router.get("/speakers", response_model=List[SpeakerResponse])

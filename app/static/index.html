@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speaker Diarization Console</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icon Library (Lucide CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Global CSS -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i data-lucide="activity" class="logo-icon"></i>
+                    <span>Diarization AI</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#/dashboard" class="nav-item active" data-page="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#/conversations" class="nav-item" data-page="conversations">
+                    <i data-lucide="message-square"></i>
+                    <span>Conversations</span>
+                </a>
+                <a href="#/streaming" class="nav-item" data-page="streaming">
+                    <i data-lucide="mic"></i>
+                    <span>Live Recording</span>
+                </a>
+                <a href="#/speakers" class="nav-item" data-page="speakers">
+                    <i data-lucide="users"></i>
+                    <span>Voice Profiles</span>
+                </a>
+                <a href="#/settings" class="nav-item" data-page="settings">
+                    <i data-lucide="settings"></i>
+                    <span>System Settings</span>
+                </a>
+                <a href="#/backup" class="nav-item" data-page="backup">
+                    <i data-lucide="database"></i>
+                    <span>Backup & Restore</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="system-status-indicator">
+                    <div class="status-dot online"></div>
+                    <span id="system-status-text">Connecting...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Topbar Header -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <h1 id="view-title">Dashboard</h1>
+                </div>
+                <div class="topbar-right">
+                    <!-- GPU Monitor Widget -->
+                    <div class="gpu-monitor" id="gpu-widget">
+                        <div class="gpu-info">
+                            <span class="gpu-label"><i data-lucide="cpu" class="small-icon"></i> GPU: <span id="gpu-name">Loading...</span></span>
+                            <span class="vram-text"><span id="vram-used">0.0</span> / <span id="vram-total">0.0</span> GB</span>
+                        </div>
+                        <div class="vram-progress-bar">
+                            <div class="vram-fill" id="vram-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dynamic View Container -->
+            <section class="content-body" id="view-container">
+                <!-- Content injected dynamically by JS -->
+                <div class="loading-spinner-container">
+                    <div class="spinner"></div>
+                    <p>Loading application...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- SPA Application Logic -->
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

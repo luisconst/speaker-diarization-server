@@ -23,6 +23,9 @@ class StatusResponse(BaseModel):
     message: str
     gpu_available: bool
     device: str
+    gpu_vram_allocated_gb: Optional[float] = None
+    gpu_vram_total_gb: Optional[float] = None
+
 
 
 # Conversation Schemas
