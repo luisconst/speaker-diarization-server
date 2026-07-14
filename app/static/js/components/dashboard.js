@@ -104,7 +104,8 @@ export default {
                     const statusClass = conv.status === 'completed' ? 'badge-success' : 
                                        (conv.status === 'processing' || conv.status === 'recording' ? 'badge-warning' : 'badge-danger');
                     const durationStr = conv.duration ? this.formatDuration(conv.duration) : '--:--';
-                    const dateStr = new Date(conv.start_time).toLocaleString();
+                    const dateStr = window.formatDate(conv.start_time);
+
                     const title = conv.title || `Conversation #${conv.id}`;
 
                     return `

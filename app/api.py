@@ -213,8 +213,29 @@ async def rename_speaker(
     return speaker
 
 
+@router.get("/speakers/{speaker_id}/sample-audio")
+async def get_speaker_sample_audio(speaker_id: int, db: Session = Depends(get_db)):
+    """Get the first segment audio of a speaker as a voice sample"""
+    segment = db.query(ConversationSegment).filter(
+        ConversationSegment.speaker_id == speaker_id,
+        ConversationSegment.is_misidentified == False
+    ).first()
+
+    if not segment:
+        segment = db.query(ConversationSegment).filter(
+            ConversationSegment.speaker_id == speaker_id
+        ).first()
+
+    if not segment:
+        raise HTTPException(status_code=404, detail="No segments found for this speaker to build audio sample.")
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/api/v1/conversations/segments/{segment.id}/audio")
+
+
 @router.delete("/speakers/{speaker_id}")
 async def delete_speaker(speaker_id: int, db: Session = Depends(get_db)):
+
     """Delete a speaker"""
     speaker = db.query(Speaker).filter(Speaker.id == speaker_id).first()
     if not speaker:

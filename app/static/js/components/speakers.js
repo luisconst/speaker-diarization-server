@@ -3,23 +3,54 @@ import api from '../api.js';
 export default {
     speakers: [],
     searchQuery: '',
+    startDateFilter: '',
+    endDateFilter: '',
+    typeFilter: '',
+    activeAudioPlayer: null,
+
 
     async render() {
         return `
-            <!-- Top Action Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
-                <div style="display: flex; gap: 12px; flex: 1; max-width: 400px;">
-                    <input type="text" id="speaker-search" class="form-control" placeholder="Search speakers by name..." />
+            <!-- Top Action Header with Search and Filters -->
+            <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                    <div style="display: flex; gap: 12px; flex: 1; max-width: 400px;">
+                        <input type="text" id="speaker-search" class="form-control" placeholder="Search speakers by name..." />
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-danger" id="btn-purge-unknowns" title="Delete all auto-enrolled Unknown_NN profiles">
+                            <i data-lucide="trash-2"></i> Delete All Unknowns
+                        </button>
+                        <button class="btn btn-primary" id="btn-show-enroll-drawer">
+                            <i data-lucide="user-plus"></i> Enroll Speaker
+                        </button>
+                    </div>
                 </div>
-                <div style="display: flex; gap: 12px;">
-                    <button class="btn btn-danger" id="btn-purge-unknowns" title="Delete all auto-enrolled Unknown_NN profiles">
-                        <i data-lucide="trash-2"></i> Delete All Unknowns
-                    </button>
-                    <button class="btn btn-primary" id="btn-show-enroll-drawer">
-                        <i data-lucide="user-plus"></i> Enroll Speaker
-                    </button>
+                
+                <!-- Filters row -->
+                <div class="content-card" style="margin-bottom: 0; padding: 16px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+                    <strong style="font-size: 0.9rem; color: var(--text-main);">Filters:</strong>
+                    
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">From:</span>
+                        <input type="date" id="filter-start-date" class="form-control" style="width: 135px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" />
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">To:</span>
+                        <input type="date" id="filter-end-date" class="form-control" style="width: 135px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" />
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Type:</span>
+                        <select class="form-control" id="filter-type" style="width: 160px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
+                            <option value="">All Profiles</option>
+                            <option value="known">Known Speakers Only</option>
+                            <option value="unknown">Unknown (Auto-enrolled)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
+
 
             <!-- Speaker Enrollment Form (Collapsible card) -->
             <div class="content-card" id="enroll-speaker-card" style="display: none; margin-bottom: 24px;">
@@ -109,6 +140,30 @@ export default {
                 this.renderGrid();
             });
         }
+
+        const startDateInput = document.getElementById('filter-start-date');
+        const endDateInput = document.getElementById('filter-end-date');
+        const typeSelect = document.getElementById('filter-type');
+
+        if (startDateInput) {
+            startDateInput.addEventListener('change', (e) => {
+                this.startDateFilter = e.target.value;
+                this.renderGrid();
+            });
+        }
+        if (endDateInput) {
+            endDateInput.addEventListener('change', (e) => {
+                this.endDateFilter = e.target.value;
+                this.renderGrid();
+            });
+        }
+        if (typeSelect) {
+            typeSelect.addEventListener('change', (e) => {
+                this.typeFilter = e.target.value;
+                this.renderGrid();
+            });
+        }
+
 
         // PURGE UNKNOWNS
         if (btnPurge) {
@@ -212,14 +267,37 @@ export default {
         const grid = document.getElementById('speakers-grid');
         if (!grid) return;
 
-        const filtered = this.speakers.filter(sp => 
-            sp.name.toLowerCase().includes(this.searchQuery)
-        );
+        const filtered = this.speakers.filter(sp => {
+            // 1. Search Query
+            const matchesQuery = sp.name.toLowerCase().includes(this.searchQuery);
+            
+            // 2. Type Filter
+            const isUnknown = sp.name.startsWith('Unknown_');
+            let matchesType = true;
+            if (this.typeFilter === 'known') matchesType = !isUnknown;
+            if (this.typeFilter === 'unknown') matchesType = isUnknown;
+
+            // 3. Date Filters
+            let matchesDate = true;
+            if (sp.created_at) {
+                const spDate = new Date(sp.created_at);
+                if (this.startDateFilter) {
+                    const start = new Date(this.startDateFilter + 'T00:00:00');
+                    if (spDate < start) matchesDate = false;
+                }
+                if (this.endDateFilter) {
+                    const end = new Date(this.endDateFilter + 'T23:59:59');
+                    if (spDate > end) matchesDate = false;
+                }
+            }
+
+            return matchesQuery && matchesType && matchesDate;
+        });
 
         if (filtered.length === 0) {
             grid.innerHTML = `
                 <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 40px;" class="content-card">
-                    No speakers profiles enrolled.
+                    No speakers profiles match the active filters.
                 </div>
             `;
             return;
@@ -236,7 +314,7 @@ export default {
 
         grid.innerHTML = filtered.map(sp => {
             const isUnknown = sp.name.startsWith('Unknown_');
-            const created = new Date(sp.created_at).toLocaleDateString();
+            const created = window.formatDate(sp.created_at);
 
             return `
                 <div class="speaker-card" id="speaker-card-${sp.id}">
@@ -248,25 +326,22 @@ export default {
                         <span class="badge ${isUnknown ? 'badge-danger' : 'badge-success'}">${isUnknown ? 'Auto' : 'Known'}</span>
                     </div>
 
-                    <div class="speaker-stats">
-                        <div class="speaker-stat-item">
-                            <span class="speaker-stat-label">Segments</span>
-                            <span class="speaker-stat-val">${sp.segment_count || 0}</span>
-                        </div>
-                        <div class="speaker-stat-item">
-                            <span class="speaker-stat-label">Database ID</span>
-                            <span class="speaker-stat-val" style="font-family: monospace;">#${sp.id}</span>
-                        </div>
+                    <div class="speakers-details-info" style="margin: 12px 0; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                        <span>Segments: <strong style="color: var(--text-main);">${sp.segment_count || 0}</strong></span>
+                        <span>DB ID: <strong style="color: var(--text-main); font-family: monospace;">#${sp.id}</strong></span>
                     </div>
 
-                    <div class="speaker-card-actions">
-                        <button class="btn btn-secondary btn-icon-only btn-configure-thresh" data-id="${sp.id}" data-name="${sp.name}" title="Configure Thresholds & Emotion Profiles">
+                    <div class="speaker-card-actions" style="margin-top: 15px; display: flex; gap: 8px;">
+                        <button class="btn btn-secondary btn-icon-only btn-play-sample" data-id="${sp.id}" data-name="${sp.name}" title="Play Voice Sample" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 6px 12px; height: 32px; font-size: 0.8rem;">
+                            <i data-lucide="play" style="width: 14px; height: 14px; color: var(--accent);"></i> Sample
+                        </button>
+                        <button class="btn btn-secondary btn-icon-only btn-configure-thresh" data-id="${sp.id}" data-name="${sp.name}" title="Configure Thresholds" style="padding: 6px; width: 32px; height: 32px;">
                             <i data-lucide="sliders-horizontal" style="width: 14px; height: 14px;"></i>
                         </button>
-                        <button class="btn btn-secondary btn-icon-only btn-rename-speaker" data-id="${sp.id}" data-name="${sp.name}" title="Rename Speaker">
+                        <button class="btn btn-secondary btn-icon-only btn-rename-speaker" data-id="${sp.id}" data-name="${sp.name}" title="Rename Speaker" style="padding: 6px; width: 32px; height: 32px;">
                             <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                         </button>
-                        <button class="btn btn-secondary btn-icon-only btn-delete-speaker" data-id="${sp.id}" data-name="${sp.name}" title="Delete Speaker">
+                        <button class="btn btn-secondary btn-icon-only btn-delete-speaker" data-id="${sp.id}" data-name="${sp.name}" title="Delete Speaker" style="padding: 6px; width: 32px; height: 32px;">
                             <i data-lucide="trash" style="width: 14px; height: 14px; color: var(--danger);"></i>
                         </button>
                     </div>
@@ -281,6 +356,73 @@ export default {
     setupGridInteractions() {
         const grid = document.getElementById('speakers-grid');
         if (!grid) return;
+
+        // Play voice sample interaction
+        grid.querySelectorAll('.btn-play-sample').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-id');
+                const name = btn.getAttribute('data-name');
+                const icon = btn.querySelector('i');
+
+                // Toggle logic if clicking the already active speaker sample
+                if (this.activeAudioPlayer && this.activeAudioPlayer._speakerId === id) {
+                    if (this.activeAudioPlayer.paused) {
+                        await this.activeAudioPlayer.play();
+                    } else {
+                        this.activeAudioPlayer.pause();
+                    }
+                    return;
+                }
+
+                // Stop any other currently playing sample
+                if (this.activeAudioPlayer) {
+                    this.activeAudioPlayer.pause();
+                    const activeId = this.activeAudioPlayer._speakerId;
+                    const prevBtn = grid.querySelector(`.btn-play-sample[data-id="${activeId}"]`);
+                    if (prevBtn) {
+                        prevBtn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px; color: var(--accent);"></i> Sample';
+                    }
+                }
+
+                try {
+                    window.showToast(`Loading voice sample for "${name}"...`, 'warning');
+                    
+                    const audioUrl = api.getSpeakerSampleAudioUrl(id);
+                    const player = new Audio(audioUrl);
+                    player._speakerId = id;
+                    
+                    player.addEventListener('play', () => {
+                        btn.innerHTML = '<i data-lucide="pause" style="width: 14px; height: 14px; color: var(--accent);"></i> Pause';
+                        lucide.createIcons();
+                    });
+
+                    player.addEventListener('ended', () => {
+                        if (this.activeAudioPlayer === player) this.activeAudioPlayer = null;
+                        btn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px; color: var(--accent);"></i> Sample';
+                        lucide.createIcons();
+                    });
+
+                    player.addEventListener('pause', () => {
+                        btn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px; color: var(--accent);"></i> Sample';
+                        lucide.createIcons();
+                    });
+
+                    player.addEventListener('error', (e) => {
+                        console.error('Audio play error:', e);
+                        window.showToast('Voice sample not found (speaker has no processed segments).', 'danger');
+                        btn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px; color: var(--accent);"></i> Sample';
+                        lucide.createIcons();
+                        if (this.activeAudioPlayer === player) this.activeAudioPlayer = null;
+                    });
+
+                    this.activeAudioPlayer = player;
+                    await player.play();
+                } catch (err) {
+                    console.error('Playback failed:', err);
+                    window.showToast('Failed to play voice sample.', 'danger');
+                }
+            });
+        });
 
         // Delete Speaker
         grid.querySelectorAll('.btn-delete-speaker').forEach(btn => {
@@ -330,6 +472,7 @@ export default {
             });
         });
     },
+
 
     async openThresholdModal(speakerId, speakerName) {
         const modal = document.getElementById('threshold-modal');

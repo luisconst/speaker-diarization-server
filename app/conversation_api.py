@@ -44,6 +44,9 @@ async def list_conversations(
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
+    speaker_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -54,6 +57,23 @@ async def list_conversations(
 
     if status:
         query = query.filter(Conversation.status == status)
+
+    if speaker_id is not None:
+        query = query.filter(Conversation.transcript_segments.any(ConversationSegment.speaker_id == speaker_id))
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(Conversation.start_time >= start_dt)
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date + " 23:59:59", "%Y-%m-%d %H:%M:%S")
+            query = query.filter(Conversation.start_time <= end_dt)
+        except ValueError:
+            pass
 
     # Get total count
     total = query.count()
@@ -69,10 +89,14 @@ async def list_conversations(
     )
 
 
+
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
     """Get conversation details with all segments"""
-    conversation = db.query(Conversation).filter(
+    from sqlalchemy.orm import selectinload
+    conversation = db.query(Conversation).options(
+        selectinload(Conversation.transcript_segments)
+    ).filter(
         Conversation.id == conversation_id
     ).first()
 
@@ -80,6 +104,7 @@ async def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return conversation
+
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
@@ -1165,3 +1190,114 @@ async def set_emotion_profile_voice_threshold(
         "emotion_category": emotion_category,
         "voice_threshold": threshold,
     }
+
+
+def format_seconds_to_timestamp(seconds: float) -> str:
+    """Format float seconds to HH:MM:SS"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def format_seconds_to_srt_timestamp(seconds: float) -> str:
+    """Format float seconds to SRT time format: HH:MM:SS,mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int(round((seconds % 1) * 1000))
+    if ms == 1000:
+        s += 1
+        ms = 0
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def format_seconds_to_vtt_timestamp(seconds: float) -> str:
+    """Format float seconds to VTT time format: HH:MM:SS.mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int(round((seconds % 1) * 1000))
+    if ms == 1000:
+        s += 1
+        ms = 0
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+
+@router.get("/{conversation_id}/export")
+async def export_conversation_transcript(
+    conversation_id: int,
+    format: str = Query("txt", enum=["txt", "srt", "vtt", "json"]),
+    db: Session = Depends(get_db)
+):
+    """Export conversation transcript in TXT, SRT, VTT, or JSON format"""
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    segments = db.query(ConversationSegment).filter(
+        ConversationSegment.conversation_id == conversation_id
+    ).order_by(ConversationSegment.start_offset.asc()).all()
+
+    if format == "json":
+        data = []
+        for s in segments:
+            data.append({
+                "speaker": s.speaker_name or "Unknown",
+                "start": s.start_offset,
+                "end": s.end_offset,
+                "text": s.text or ""
+            })
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=data,
+            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.json"}
+        )
+
+    elif format == "txt":
+        lines = []
+        for s in segments:
+            start_str = format_seconds_to_timestamp(s.start_offset)
+            speaker = s.speaker_name or "Unknown"
+            text = s.text or ""
+            lines.append(f"[{start_str}] {speaker}: {text}")
+        content = "\n".join(lines)
+        from fastapi.responses import Response
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.txt"}
+        )
+
+    elif format == "srt":
+        lines = []
+        for i, s in enumerate(segments, 1):
+            start_srt = format_seconds_to_srt_timestamp(s.start_offset)
+            end_srt = format_seconds_to_srt_timestamp(s.end_offset)
+            speaker = s.speaker_name or "Unknown"
+            text = s.text or ""
+            lines.append(f"{i}\n{start_srt} --> {end_srt}\n[{speaker}] {text}\n")
+        content = "\n".join(lines)
+        from fastapi.responses import Response
+        return Response(
+            content=content,
+            media_type="text/srt",
+            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.srt"}
+        )
+
+    elif format == "vtt":
+        lines = ["WEBVTT\n"]
+        for s in segments:
+            start_vtt = format_seconds_to_vtt_timestamp(s.start_offset)
+            end_vtt = format_seconds_to_vtt_timestamp(s.end_offset)
+            speaker = s.speaker_name or "Unknown"
+            text = s.text or ""
+            lines.append(f"{start_vtt} --> {end_vtt}\n<{speaker}> {text}\n")
+        content = "\n".join(lines)
+        from fastapi.responses import Response
+        return Response(
+            content=content,
+            media_type="text/vtt",
+            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.vtt"}
+        )
+

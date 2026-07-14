@@ -7,6 +7,20 @@ import StreamingView from './components/streaming.js';
 import SettingsView from './components/settings.js';
 import BackupView from './components/backup.js';
 
+// Global date formatter in dd/mm/yyyy hh:mm format
+export function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${d}/${m}/${y} ${h}:${min}`;
+}
+window.formatDate = formatDate;
+
 // Global application state
 const AppState = {
     currentPath: '',

@@ -72,7 +72,29 @@ export default {
                         </div>
                     </div>
 
+                    <!-- Export Transcripts Card -->
                     <div class="content-card">
+                        <div class="card-header" style="margin-bottom: 16px;">
+                            <h2>Export Transcript</h2>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <button class="btn btn-secondary btn-export" data-format="txt" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
+                                <i data-lucide="file-text" style="width: 14px; height: 14px; color: var(--accent);"></i> TXT
+                            </button>
+                            <button class="btn btn-secondary btn-export" data-format="srt" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
+                                <i data-lucide="film" style="width: 14px; height: 14px; color: var(--accent);"></i> SRT
+                            </button>
+                            <button class="btn btn-secondary btn-export" data-format="vtt" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
+                                <i data-lucide="file-video" style="width: 14px; height: 14px; color: var(--accent);"></i> VTT
+                            </button>
+                            <button class="btn btn-secondary btn-export" data-format="json" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
+                                <i data-lucide="braces" style="width: 14px; height: 14px; color: var(--accent);"></i> JSON
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="content-card">
+
                         <div class="card-header" style="margin-bottom: 16px;">
                             <h2>Human-in-the-Loop Tips</h2>
                         </div>
@@ -183,8 +205,9 @@ export default {
         }
 
         if (date) {
-            date.textContent = new Date(this.conversation.start_time).toLocaleString();
+            date.textContent = window.formatDate(this.conversation.start_time);
         }
+
 
         if (format) {
             format.textContent = this.conversation.audio_format || 'wav';
@@ -209,14 +232,12 @@ export default {
         // Sort segments chronologically
         segments.sort((a, b) => a.start_offset - b.start_offset);
 
-        list.innerHTML = segments.map(seg => {
+        // Inject the datalist for speaker autocompletion
+        const datalistHtml = `<datalist id="speakers-datalist">${this.speakers.map(sp => `<option value="${sp.name}"></option>`).join('')}</datalist>`;
+
+        list.innerHTML = datalistHtml + segments.map(seg => {
             const isUnknown = !seg.speaker_id || (seg.speaker_name && seg.speaker_name.startsWith('Unknown_'));
             
-            // Generate Speaker select options
-            const speakerOptionsHtml = this.speakers.map(sp => `
-                <option value="${sp.id}" ${seg.speaker_id === sp.id ? 'selected' : ''}>${sp.name}</option>
-            `).join('');
-
             // Emotion classes
             const emotionClass = seg.emotion_category === 'neutral' ? 'neutral' : 
                                  (seg.emotion_category === 'angry' ? 'angry' : 
@@ -229,20 +250,24 @@ export default {
                 <option value="${emo}" ${seg.emotion_category === emo ? 'selected' : ''}>${emo.toUpperCase()}</option>
             `).join('');
 
+            const bgStyle = isUnknown 
+                ? 'background-color: rgba(255, 255, 255, 0.04); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);' 
+                : 'background-color: rgba(99, 102, 241, 0.05); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.25);';
+
             return `
                 <div class="segment-card ${seg.is_misidentified ? 'misidentified' : ''}" id="seg-card-${seg.id}" data-id="${seg.id}">
                     <div class="segment-header">
-                        <div class="segment-meta">
+                        <div class="segment-meta" style="flex-wrap: wrap; gap: 10px;">
                             <span class="segment-time">${this.formatDuration(seg.start_offset)} - ${this.formatDuration(seg.end_offset)}</span>
                             
-                            <!-- Speaker Selection Dropdown -->
-                            <div class="speaker-badge-container">
-                                <select class="speaker-badge-select ${isUnknown ? 'unknown' : ''}" data-id="${seg.id}" title="Assign voice identity">
-                                    <option value="" disabled ${isUnknown ? 'selected' : ''}>-- Select Speaker --</option>
-                                    ${speakerOptionsHtml}
-                                    <option value="new">+ Enroll New Speaker...</option>
-                                </select>
+                            <!-- Speaker Inline Input with Autocomplete Datalist -->
+                            <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                <input type="text" class="form-control speaker-inline-input" data-id="${seg.id}" data-current-name="${seg.speaker_name || ''}" list="speakers-datalist" value="${seg.speaker_name || ''}" style="width: 140px; height: 26px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; ${bgStyle}" placeholder="Type name..." />
+                                <button class="btn btn-secondary btn-icon-only btn-rename-inline" data-id="${seg.id}" title="Save speaker identity" style="padding: 2px; width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="check" style="width: 12px; height: 12px; color: var(--accent);"></i>
+                                </button>
                             </div>
+
 
                             <!-- Emotion Selection Dropdown -->
                             <div>
@@ -376,44 +401,99 @@ export default {
 
         const closeModal = () => enrollModal.classList.remove('active');
         
-        if (btnCloseModal) btnCloseModal.addEventListener('click', closeModal);
-        if (btnCancelEnroll) btnCancelEnroll.addEventListener('click', closeModal);
+        // Export Transcript buttons
+        document.querySelectorAll('.btn-export').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const format = btn.getAttribute('data-format');
+                const url = api.getExportTranscriptUrl(this.conversationId, format);
+                window.open(url, '_blank');
+            });
+        });
     },
+
 
     setupSegmentInteractions() {
         const list = document.getElementById('detail-segments-list');
         if (!list) return;
 
-        // Speaker identification selector
-        list.querySelectorAll('.speaker-badge-select').forEach(select => {
-            let previousValue = select.value;
-            
-            select.addEventListener('change', async (e) => {
-                const segmentId = select.getAttribute('data-id');
-                const value = e.target.value;
+        // Inline speaker renaming / identification
+        list.querySelectorAll('.btn-rename-inline').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const segmentId = btn.getAttribute('data-id');
+                const input = list.querySelector(`.speaker-inline-input[data-id="${segmentId}"]`);
+                if (!input) return;
 
-                if (value === 'new') {
-                    // Open enroll new speaker modal
-                    this.openEnrollModal(segmentId, select, previousValue);
-                } else if (value) {
-                    // Identify using existing speaker ID
+                const newName = input.value.trim();
+                const oldName = input.getAttribute('data-current-name');
+
+                if (!newName) {
+                    window.showToast('Speaker name cannot be empty.', 'warning');
+                    return;
+                }
+
+                if (newName === oldName) {
+                    window.showToast('Speaker name has not changed.', 'info');
+                    return;
+                }
+
+                // Check if the name exists in the enrolled speakers
+                const existingSpeaker = this.speakers.find(sp => sp.name.toLowerCase() === newName.toLowerCase());
+
+                if (existingSpeaker) {
+                    // Identify as existing speaker
                     try {
-                        select.disabled = true;
-                        window.showToast('Updating speaker identities retroactively...', 'warning');
+                        btn.disabled = true;
+                        input.disabled = true;
+                        window.showToast(`Assigning segment to speaker "${existingSpeaker.name}"...`, 'warning');
                         await api.identifySpeakerInSegment(this.conversationId, segmentId, {
-                            speakerId: parseInt(value),
+                            speakerId: existingSpeaker.id,
                             enroll: false
                         });
-                        window.showToast('Speaker identity updated retroactively.', 'success');
+                        window.showToast(`Segment assigned to speaker "${existingSpeaker.name}".`, 'success');
                         await this.loadData();
                     } catch (err) {
-                        window.showToast(`Failed to update speaker: ${err.message}`, 'danger');
-                        select.value = previousValue;
-                        select.disabled = false;
+                        window.showToast(`Failed to assign speaker: ${err.message}`, 'danger');
+                        input.value = oldName;
+                        btn.disabled = false;
+                        input.disabled = false;
+                    }
+                } else {
+                    // Create new speaker (enroll)
+                    if (confirm(`Do you want to enroll "${newName}" as a new speaker profile using this segment's voice print? This will also retroactively link other segments of the previous unknown speaker.`)) {
+                        try {
+                            btn.disabled = true;
+                            input.disabled = true;
+                            window.showToast(`Enrolling new speaker "${newName}"...`, 'warning');
+                            await api.identifySpeakerInSegment(this.conversationId, segmentId, {
+                                speakerName: newName,
+                                enroll: true
+                            });
+                            window.showToast(`Speaker "${newName}" enrolled successfully. Past segments updated.`, 'success');
+                            await this.loadData();
+                        } catch (err) {
+                            window.showToast(`Failed to enroll speaker: ${err.message}`, 'danger');
+                            input.value = oldName;
+                            btn.disabled = false;
+                            input.disabled = false;
+                        }
+                    } else {
+                        input.value = oldName;
                     }
                 }
             });
         });
+
+        // Handle Enter inside input field
+        list.querySelectorAll('.speaker-inline-input').forEach(input => {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const segmentId = input.getAttribute('data-id');
+                    const btn = list.querySelector(`.btn-rename-inline[data-id="${segmentId}"]`);
+                    if (btn) btn.click();
+                }
+            });
+        });
+
 
         // Emotion correction dropdown
         list.querySelectorAll('.emotion-badge-select').forEach(select => {

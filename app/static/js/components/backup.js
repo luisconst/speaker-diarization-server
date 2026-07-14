@@ -344,7 +344,7 @@ export default {
             this.checkpoints.sort((a, b) => b.timestamp - a.timestamp);
 
             body.innerHTML = this.checkpoints.map(check => {
-                const dateStr = new Date(check.timestamp * 1000).toLocaleString();
+                const dateStr = window.formatDate(new Date(check.timestamp * 1000));
                 return `
                     <tr>
                         <td style="font-family: monospace; font-size: 0.85rem;">${dateStr}</td>
@@ -379,7 +379,7 @@ export default {
         body.querySelectorAll('.btn-restore-check').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const timestamp = btn.getAttribute('data-timestamp');
-                const dateStr = new Date(timestamp * 1000).toLocaleString();
+                const dateStr = window.formatDate(new Date(timestamp * 1000));
                 
                 if (confirm(`WARNING: Restore system database to checkpoint state from ${dateStr}? This will overwrite your current database. The server will restart models.`)) {
                     try {

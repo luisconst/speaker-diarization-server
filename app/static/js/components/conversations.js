@@ -5,6 +5,10 @@ export default {
     limit: 10,
     total: 0,
     statusFilter: '',
+    speakerFilter: '',
+    startDateFilter: '',
+    endDateFilter: '',
+
     
     async render() {
         return `
@@ -34,10 +38,26 @@ export default {
             </div>
 
             <div class="content-card">
-                <div class="card-header" style="flex-wrap: wrap; gap: 16px;">
+                <div class="card-header" style="flex-wrap: wrap; gap: 16px; align-items: center;">
                     <h2>Diarized Conversations</h2>
-                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                        <select class="form-control" id="status-filter" style="width: 160px; height: 38px; padding: 0 10px;">
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <!-- Date Filters -->
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">From:</span>
+                            <input type="date" id="filter-start-date" class="form-control" style="width: 135px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" />
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">To:</span>
+                            <input type="date" id="filter-end-date" class="form-control" style="width: 135px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" />
+                        </div>
+                        
+                        <!-- Speaker Filter -->
+                        <select class="form-control" id="speaker-filter" style="width: 140px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
+                            <option value="">All Speakers</option>
+                        </select>
+
+                        <!-- Status Filter -->
+                        <select class="form-control" id="status-filter" style="width: 130px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
                             <option value="">All Statuses</option>
                             <option value="completed">Completed</option>
                             <option value="processing">Processing</option>
@@ -56,7 +76,7 @@ export default {
                                 <th>Duration</th>
                                 <th>Speakers</th>
                                 <th>Status</th>
-                                <th style="text-align: right;">Actions</th>
+                                <th style="text-align: right; width: 180px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="conversations-list">
@@ -88,8 +108,23 @@ export default {
     async init() {
         this.setupUploadHandlers();
         this.setupFiltersAndPagination();
+        await this.loadSpeakersList();
         await this.loadConversations();
     },
+
+    async loadSpeakersList() {
+        try {
+            const speakers = await api.getSpeakers();
+            const speakerSelect = document.getElementById('speaker-filter');
+            if (speakerSelect) {
+                speakerSelect.innerHTML = '<option value="">All Speakers</option>' + 
+                    speakers.map(sp => `<option value="${sp.id}">${sp.name}</option>`).join('');
+            }
+        } catch (e) {
+            console.error('Failed to load speakers for filter:', e);
+        }
+    },
+
 
     setupUploadHandlers() {
         const dropZone = document.getElementById('drop-zone');
@@ -214,12 +249,39 @@ export default {
 
     setupFiltersAndPagination() {
         const filter = document.getElementById('status-filter');
+        const speakerFilter = document.getElementById('speaker-filter');
+        const startDateFilter = document.getElementById('filter-start-date');
+        const endDateFilter = document.getElementById('filter-end-date');
         const btnPrev = document.getElementById('btn-prev');
         const btnNext = document.getElementById('btn-next');
 
         if (filter) {
             filter.addEventListener('change', async (e) => {
                 this.statusFilter = e.target.value;
+                this.skip = 0;
+                await this.loadConversations();
+            });
+        }
+
+        if (speakerFilter) {
+            speakerFilter.addEventListener('change', async (e) => {
+                this.speakerFilter = e.target.value;
+                this.skip = 0;
+                await this.loadConversations();
+            });
+        }
+
+        if (startDateFilter) {
+            startDateFilter.addEventListener('change', async (e) => {
+                this.startDateFilter = e.target.value;
+                this.skip = 0;
+                await this.loadConversations();
+            });
+        }
+
+        if (endDateFilter) {
+            endDateFilter.addEventListener('change', async (e) => {
+                this.endDateFilter = e.target.value;
                 this.skip = 0;
                 await this.loadConversations();
             });
@@ -251,7 +313,15 @@ export default {
         if (!list) return;
 
         try {
-            const data = await api.getConversations(this.skip, this.limit, this.statusFilter);
+            const data = await api.getConversations(
+                this.skip, 
+                this.limit, 
+                this.statusFilter,
+                this.speakerFilter || null,
+                this.startDateFilter || null,
+                this.endDateFilter || null
+            );
+
             this.total = data.total;
 
             if (data.conversations.length === 0) {
@@ -274,7 +344,7 @@ export default {
                 const statusClass = conv.status === 'completed' ? 'badge-success' : 
                                    (conv.status === 'processing' || conv.status === 'recording' ? 'badge-warning' : 'badge-danger');
                 const durationStr = conv.duration ? this.formatDuration(conv.duration) : '--:--';
-                const dateStr = new Date(conv.start_time).toLocaleString();
+                const dateStr = window.formatDate(conv.start_time);
                 const title = conv.title || `Conversation #${conv.id}`;
 
                 return `
@@ -287,7 +357,14 @@ export default {
                         <td><span class="badge badge-info">${conv.num_speakers}</span></td>
                         <td><span class="badge ${statusClass}">${conv.status}</span></td>
                         <td style="text-align: right;" class="action-cell">
-                            <button class="btn btn-icon-only btn-delete-conv" data-id="${conv.id}" title="Delete Conversation" style="padding: 6px;">
+                            <select class="form-control download-format-select" data-id="${conv.id}" style="width: 100px; height: 28px; padding: 2px 4px; font-size: 0.75rem; display: inline-block; margin-right: 8px; vertical-align: middle;">
+                                <option value="">Download...</option>
+                                <option value="txt">TXT (Text)</option>
+                                <option value="srt">SRT (Subs)</option>
+                                <option value="vtt">VTT (Webvtt)</option>
+                                <option value="json">JSON</option>
+                            </select>
+                            <button class="btn btn-icon-only btn-delete-conv" data-id="${conv.id}" title="Delete Conversation" style="padding: 6px; vertical-align: middle;">
                                 <i data-lucide="trash-2" style="width: 14px; height: 14px; color: var(--danger)"></i>
                             </button>
                         </td>
@@ -307,15 +384,28 @@ export default {
             if (btnPrev) btnPrev.disabled = this.skip === 0;
             if (btnNext) btnNext.disabled = endVal >= this.total;
 
-            // Make rows clickable, except the action cell button
+            // Make rows clickable, except the action cell element
             list.querySelectorAll('tr').forEach(row => {
                 row.addEventListener('click', (e) => {
-                    // Check if clicked element was part of action cell or is a button
-                    if (e.target.closest('.action-cell') || e.target.closest('button')) {
+                    // Check if clicked element was part of action cell or is a select/button
+                    if (e.target.closest('.action-cell') || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') {
                         return;
                     }
                     const id = row.getAttribute('data-id');
                     window.location.hash = `#/conversations/${id}`;
+                });
+            });
+
+            // Set up download format dropdowns
+            list.querySelectorAll('.download-format-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const id = select.getAttribute('data-id');
+                    const format = e.target.value;
+                    if (format) {
+                        const url = api.getExportTranscriptUrl(id, format);
+                        window.open(url, '_blank');
+                        select.value = ''; // Reset select to "Download..."
+                    }
                 });
             });
 
@@ -337,6 +427,7 @@ export default {
                     }
                 });
             });
+
 
         } catch (error) {
             console.error('Failed to load conversations:', error);

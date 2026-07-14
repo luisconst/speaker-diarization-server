@@ -117,11 +117,15 @@ class ApiClient {
 
 
     // Conversation Endpoints
-    async getConversations(skip = 0, limit = 100, status = null) {
+    async getConversations(skip = 0, limit = 100, status = null, speakerId = null, startDate = null, endDate = null) {
         let query = `/api/v1/conversations?skip=${skip}&limit=${limit}`;
-        if (status) query += `&status=${status}`;
+        if (status) query += `&status=${encodeURIComponent(status)}`;
+        if (speakerId) query += `&speaker_id=${encodeURIComponent(speakerId)}`;
+        if (startDate) query += `&start_date=${encodeURIComponent(startDate)}`;
+        if (endDate) query += `&end_date=${encodeURIComponent(endDate)}`;
         return this._request(query);
     }
+
 
     async getConversation(id) {
         return this._request(`/api/v1/conversations/${id}`);
@@ -187,6 +191,15 @@ class ApiClient {
     getSegmentAudioUrl(segmentId) {
         return `/api/v1/conversations/segments/${segmentId}/audio`;
     }
+
+    getSpeakerSampleAudioUrl(speakerId) {
+        return `/api/v1/speakers/${speakerId}/sample-audio`;
+    }
+
+    getExportTranscriptUrl(conversationId, format) {
+        return `/api/v1/conversations/${conversationId}/export?format=${format}`;
+    }
+
 
     // Process Full Audio File
     async processAudioFile(file) {
