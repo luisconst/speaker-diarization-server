@@ -349,21 +349,18 @@ export default {
         modal.classList.add('active');
 
         try {
-            // Fetch speaker emotion thresholds
-            // The GET /api/v1/conversations/speakers/{id}/emotion-threshold endpoint returns float threshold, or 0.6 fallback
-            // In API schemas.py or api.py: Wait, let's see how the endpoint is modeled:
-            // @router.get("/speakers/{speaker_id}/emotion-threshold") returns {"speaker_id": int, "emotion_threshold": float}
             const threshResponse = await api.getSpeakerEmotionThreshold(speakerId);
-            const currentThreshold = threshResponse.emotion_threshold || 0.6;
+            // Read custom_threshold or effective_threshold from response
+            const currentThreshold = threshResponse.custom_threshold !== null && threshResponse.custom_threshold !== undefined 
+                ? threshResponse.custom_threshold 
+                : (threshResponse.effective_threshold || 0.6);
             
             slider.value = currentThreshold;
             label.textContent = currentThreshold.toFixed(2);
 
-            // Fetch per-emotion profiles
-            // The GET /api/v1/conversations/speakers/{id}/emotion-profiles endpoint returns list of profiles
-            // In conversation_api.py:
-            // @router.get("/speakers/{speaker_id}/emotion-profiles") returns List[SpeakerEmotionProfileResponse]
-            const profiles = await api.getSpeakerEmotionProfiles(speakerId);
+            // Fetch per-emotion profiles (returns object with 'profiles' array field)
+            const profilesResponse = await api.getSpeakerEmotionProfiles(speakerId);
+            const profiles = profilesResponse.profiles || [];
             
             if (profiles.length === 0) {
                 listContainer.innerHTML = `
@@ -371,6 +368,7 @@ export default {
                         No custom emotion profiles created. Correct emotions on segments to build personalized voice profiles.
                     </p>
                 `;
+
             } else {
                 listContainer.innerHTML = profiles.map(prof => `
                     <div style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">

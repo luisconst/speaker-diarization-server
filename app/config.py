@@ -23,6 +23,11 @@ _ENV_OVERRIDES: Tuple[Tuple[str, str, Callable[[str], Any]], ...] = (
     ("silence_duration", "SILENCE_DURATION", float),
     ("filter_hallucinations", "FILTER_HALLUCINATIONS", _as_bool),
     ("emotion_threshold", "EMOTION_THRESHOLD", float),
+    ("whisper_model", "WHISPER_MODEL", str),
+    ("whisper_language", "WHISPER_LANGUAGE", str),
+    ("enable_personalized_emotions", "ENABLE_PERSONALIZED_EMOTIONS", _as_bool),
+    ("offline_mode", "OFFLINE_MODE", _as_bool),
+    ("cleanup_vram_threshold_gb", "CLEANUP_VRAM_THRESHOLD_GB", int),
 )
 
 
@@ -33,6 +38,12 @@ class VoiceSettings(BaseModel):
     silence_duration: float = Field(default=0.5, ge=0.1, le=5.0, description="Silence duration for streaming (seconds)")
     filter_hallucinations: bool = Field(default=True, description="Filter common Whisper hallucinations")
     emotion_threshold: float = Field(default=0.6, ge=0.3, le=1.0, description="Global emotion matching threshold (0.3-1.0)")
+    whisper_model: str = Field(default="large-v3-turbo", description="Whisper model name")
+    whisper_language: str = Field(default="en", description="Whisper transcription language")
+    enable_personalized_emotions: bool = Field(default=True, description="Enable personalized emotion matching")
+    offline_mode: bool = Field(default=False, description="Run in offline mode using cache only")
+    cleanup_vram_threshold_gb: int = Field(default=12, ge=2, le=64, description="VRAM threshold for cleanup (GB)")
+
 
 
 class ConfigManager:

@@ -17,6 +17,12 @@ class SettingsUpdateRequest(BaseModel):
     context_padding: Optional[float] = None
     silence_duration: Optional[float] = None
     filter_hallucinations: Optional[bool] = None
+    whisper_model: Optional[str] = None
+    whisper_language: Optional[str] = None
+    enable_personalized_emotions: Optional[bool] = None
+    offline_mode: Optional[bool] = None
+    cleanup_vram_threshold_gb: Optional[int] = None
+
 
 
 @router.get("/voice", response_model=VoiceSettings)

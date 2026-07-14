@@ -32,22 +32,22 @@ class StatusResponse(BaseModel):
 class Word(BaseModel):
     """Word-level transcription data. Fields are Optional so that legacy rows
     (pre-word-probability schema) still deserialize without raising."""
-    word: str
+    word: Optional[str] = None
     start: Optional[float] = None
     end: Optional[float] = None
     probability: Optional[float] = None
 
 class ConversationSegmentResponse(BaseModel):
     id: int
-    conversation_id: int
-    speaker_id: Optional[int]
-    speaker_name: Optional[str]
-    text: Optional[str]
-    start_time: datetime
-    end_time: datetime
-    start_offset: float
-    end_offset: float
-    confidence: Optional[float]
+    conversation_id: Optional[int] = None
+    speaker_id: Optional[int] = None
+    speaker_name: Optional[str] = None
+    text: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    start_offset: Optional[float] = None
+    end_offset: Optional[float] = None
+    confidence: Optional[float] = None
     emotion_category: Optional[str] = None
     emotion_confidence: Optional[float] = None
     emotion_corrected: bool = False
@@ -57,6 +57,7 @@ class ConversationSegmentResponse(BaseModel):
     words: Optional[List[Word]] = None
     avg_logprob: Optional[float] = None
     is_misidentified: bool = False
+
 
     @field_validator('detector_breakdown', mode='before')
     @classmethod
@@ -91,14 +92,14 @@ class ConversationSegmentResponse(BaseModel):
 class ConversationListItem(BaseModel):
     """Lightweight conversation summary for list views (no segments)"""
     id: int
-    title: Optional[str]
-    start_time: datetime
-    end_time: Optional[datetime]
-    duration: Optional[float]
-    status: str
-    audio_format: str
-    num_segments: int
-    num_speakers: int
+    title: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: Optional[float] = None
+    status: Optional[str] = None
+    audio_format: Optional[str] = "wav"
+    num_segments: Optional[int] = 0
+    num_speakers: Optional[int] = 0
 
     class Config:
         from_attributes = True
@@ -115,14 +116,14 @@ class ConversationsListResponse(BaseModel):
 class ConversationResponse(BaseModel):
     """Full conversation details with all segments"""
     id: int
-    title: Optional[str]
-    start_time: datetime
-    end_time: Optional[datetime]
-    duration: Optional[float]
-    status: str
-    audio_format: str
-    num_segments: int
-    num_speakers: int
+    title: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: Optional[float] = None
+    status: Optional[str] = None
+    audio_format: Optional[str] = "wav"
+    num_segments: Optional[int] = 0
+    num_speakers: Optional[int] = 0
     transcript_segments: List[ConversationSegmentResponse] = []
 
     class Config:

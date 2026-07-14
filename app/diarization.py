@@ -273,8 +273,9 @@ class SpeakerRecognitionEngine:
         if not torch.cuda.is_available():
             return
 
-        # Get VRAM threshold from env (default: 12GB)
-        threshold_gb = float(os.getenv("CLEANUP_VRAM_THRESHOLD_GB", "12"))
+        # Get VRAM threshold from config with env override
+        threshold_gb = float(os.getenv("CLEANUP_VRAM_THRESHOLD_GB", str(get_config().get_settings().cleanup_vram_threshold_gb)))
+
 
         # Check current VRAM usage (reserved = what nvidia-smi shows)
         vram_used_gb = torch.cuda.memory_reserved() / (1024**3)
@@ -373,7 +374,8 @@ class SpeakerRecognitionEngine:
             return self._whisper_model
         with self._model_lock:
             if self._whisper_model is None:
-                model_name = os.getenv("WHISPER_MODEL", "large-v3-turbo")
+                settings = get_config().get_settings()
+                model_name = os.getenv("WHISPER_MODEL", settings.whisper_model)
                 device_name = "cuda" if torch.cuda.is_available() else "cpu"
                 compute_type = "float16" if torch.cuda.is_available() else "int8"
                 logger.info(f"Loading faster-whisper model ({model_name}) on {device_name} / {compute_type}...")
@@ -397,7 +399,9 @@ class SpeakerRecognitionEngine:
             try:
                 from funasr import AutoModel
                 model_name = os.getenv("EMOTION_MODEL", "iic/emotion2vec_plus_large")
-                use_offline = os.getenv("OFFLINE_MODE", "false").lower() == "true"
+                settings = get_config().get_settings()
+                use_offline = os.getenv("OFFLINE_MODE", str(settings.offline_mode)).lower() == "true"
+
                 logger.info(f"Loading emotion2vec model via FunASR ({model_name})...")
                 self._emotion_model = AutoModel(
                     model=model_name,
@@ -427,9 +431,10 @@ class SpeakerRecognitionEngine:
             List of transcription segments with timestamps
         """
         logger.info(f"Transcribing {audio_file}...")
-        # Get language from environment variable (default: "en")
-        # Use "auto" for auto-detection, or specify language code (e.g., "es", "fr", "de")
-        language = os.getenv("WHISPER_LANGUAGE", "en")
+        # Get language from environment variable or settings config
+        settings = get_config().get_settings()
+        language = os.getenv("WHISPER_LANGUAGE", settings.whisper_language)
+
         # faster-whisper transcription with word-level timestamps and confidence
         segments_generator, info = self.whisper_model.transcribe(
             audio_file,
@@ -925,7 +930,8 @@ class SpeakerRecognitionEngine:
         settings = get_config().get_settings()
         filter_hallucinations = settings.filter_hallucinations
         global_emotion_threshold = settings.emotion_threshold
-        enable_personalized_emotions = os.getenv("ENABLE_PERSONALIZED_EMOTIONS", "true").lower() == "true"
+        enable_personalized_emotions = os.getenv("ENABLE_PERSONALIZED_EMOTIONS", str(settings.enable_personalized_emotions)).lower() == "true"
+
 
         unknown_speaker_map: Dict[str, str] = {}
         unknown_counter = 1
