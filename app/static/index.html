@@ -66,9 +66,16 @@
                 <div class="topbar-left">
                     <h1 id="view-title">Dashboard</h1>
                 </div>
-                <div class="topbar-right">
+                <div class="topbar-right" style="display: flex; align-items: center;">
+                    <!-- Active Operator Input -->
+                    <div class="operator-selector" style="display: flex; align-items: center; gap: 8px; margin-right: 16px; padding-right: 16px; border-right: 1px solid rgba(255,255,255,0.08);">
+                        <i data-lucide="user" style="width: 16px; height: 16px; color: var(--primary);"></i>
+                        <span style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">Operator:</span>
+                        <input type="text" id="active-operator-input" class="form-control" style="width: 120px; height: 30px; padding: 2px 8px; font-size: 0.8rem; border-radius: 6px;" placeholder="Anonymous" />
+                    </div>
+
                     <!-- GPU Monitor Widget -->
-                    <div class="gpu-monitor" id="gpu-widget">
+                    <div class="gpu-monitor" id="gpu-widget" style="flex-shrink: 0;">
                         <div class="gpu-info">
                             <span class="gpu-label"><i data-lucide="cpu" class="small-icon"></i> GPU: <span id="gpu-name">Loading...</span></span>
                             <span class="vram-text"><span id="vram-used">0.0</span> / <span id="vram-total">0.0</span> GB</span>

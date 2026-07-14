@@ -100,6 +100,7 @@ class ConversationListItem(BaseModel):
     audio_format: Optional[str] = "wav"
     num_segments: Optional[int] = 0
     num_speakers: Optional[int] = 0
+    uploaded_by: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -124,6 +125,7 @@ class ConversationResponse(BaseModel):
     audio_format: Optional[str] = "wav"
     num_segments: Optional[int] = 0
     num_speakers: Optional[int] = 0
+    uploaded_by: Optional[str] = None
     transcript_segments: List[ConversationSegmentResponse] = []
 
     class Config:

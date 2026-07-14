@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import os
 import shutil
 import asyncio
@@ -277,7 +277,9 @@ async def delete_all_unknown_speakers(db: Session = Depends(get_db)):
 
 @router.post("/process", response_model=ConversationResponse)
 async def process_audio(
+    request: Request,
     audio_file: UploadFile = File(...),
+    uploaded_by: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     engine: SpeakerRecognitionEngine = Depends(get_engine)
 ):
@@ -285,6 +287,28 @@ async def process_audio(
     Process uploaded audio file with speaker diarization and recognition.
     Creates a new Conversation with segments.
     """
+    # Extract uploader identity
+    user_identity = uploaded_by
+    if not user_identity:
+        headers_to_check = [
+            "x-upload-user",
+            "x-remote-user",
+            "remote-user",
+            "x-forwarded-user"
+        ]
+        for header in headers_to_check:
+            val = request.headers.get(header)
+            if val:
+                user_identity = val
+                break
+    
+    if not user_identity:
+        try:
+            import pwd
+            user_identity = pwd.getpwuid(os.getuid()).pw_name
+        except Exception:
+            user_identity = "anonymous"
+
     # Save audio file
     recordings_dir = os.path.join(data_path(), "recordings")
     os.makedirs(recordings_dir, exist_ok=True)
@@ -319,7 +343,8 @@ async def process_audio(
         title=f"Uploaded: {audio_file.filename}",
         audio_path=file_path,
         start_time=start_time,
-        status="processing"
+        status="processing",
+        uploaded_by=user_identity
     )
     db.add(conversation)
     db.commit()

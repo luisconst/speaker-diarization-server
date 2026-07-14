@@ -117,14 +117,16 @@ class ApiClient {
 
 
     // Conversation Endpoints
-    async getConversations(skip = 0, limit = 100, status = null, speakerId = null, startDate = null, endDate = null) {
+    async getConversations(skip = 0, limit = 100, status = null, speakerId = null, startDate = null, endDate = null, uploadedBy = null) {
         let query = `/api/v1/conversations?skip=${skip}&limit=${limit}`;
         if (status) query += `&status=${encodeURIComponent(status)}`;
         if (speakerId) query += `&speaker_id=${encodeURIComponent(speakerId)}`;
         if (startDate) query += `&start_date=${encodeURIComponent(startDate)}`;
         if (endDate) query += `&end_date=${encodeURIComponent(endDate)}`;
+        if (uploadedBy) query += `&uploaded_by=${encodeURIComponent(uploadedBy)}`;
         return this._request(query);
     }
+
 
 
     async getConversation(id) {

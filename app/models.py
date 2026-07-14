@@ -106,6 +106,7 @@ class Conversation(Base):
     audio_format = Column(String, default="wav")  # wav or mp3
     num_segments = Column(Integer, default=0)
     num_speakers = Column(Integer, default=0)
+    uploaded_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=utc_now)
 
     # Relationships

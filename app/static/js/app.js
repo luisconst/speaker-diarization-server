@@ -232,6 +232,15 @@ async function routerCoordinator() {
 // Initial setup
 window.addEventListener('hashchange', routerCoordinator);
 window.addEventListener('load', () => {
+    // Initialize operator input from localStorage
+    const operatorInput = document.getElementById('active-operator-input');
+    if (operatorInput) {
+        operatorInput.value = localStorage.getItem('active_user') || '';
+        operatorInput.addEventListener('input', (e) => {
+            localStorage.setItem('active_user', e.target.value.trim());
+        });
+    }
+
     // Trigger initial route
     routerCoordinator();
     

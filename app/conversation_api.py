@@ -47,6 +47,7 @@ async def list_conversations(
     speaker_id: Optional[int] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    uploaded_by: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -57,6 +58,9 @@ async def list_conversations(
 
     if status:
         query = query.filter(Conversation.status == status)
+
+    if uploaded_by:
+        query = query.filter(Conversation.uploaded_by == uploaded_by)
 
     if speaker_id is not None:
         query = query.filter(Conversation.transcript_segments.any(ConversationSegment.speaker_id == speaker_id))

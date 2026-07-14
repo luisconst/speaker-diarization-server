@@ -8,6 +8,8 @@ export default {
     speakerFilter: '',
     startDateFilter: '',
     endDateFilter: '',
+    userFilter: '',
+
 
     
     async render() {
@@ -56,6 +58,9 @@ export default {
                             <option value="">All Speakers</option>
                         </select>
 
+                        <!-- User Filter -->
+                        <input type="text" id="user-filter" class="form-control" style="width: 120px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" placeholder="Filter by user..." value="${this.userFilter || ''}" />
+
                         <!-- Status Filter -->
                         <select class="form-control" id="status-filter" style="width: 130px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
                             <option value="">All Statuses</option>
@@ -75,13 +80,14 @@ export default {
                                 <th>Processed Date</th>
                                 <th>Duration</th>
                                 <th>Speakers</th>
+                                <th>Uploaded By</th>
                                 <th>Status</th>
                                 <th style="text-align: right; width: 180px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="conversations-list">
                             <tr>
-                                <td colspan="6" style="text-align: center; color: var(--text-muted);">
+                                <td colspan="7" style="text-align: center; color: var(--text-muted);">
                                     <div class="loading-spinner-container" style="height: 100px;">
                                         <div class="spinner"></div>
                                     </div>
@@ -189,6 +195,12 @@ export default {
             const formData = new FormData();
             formData.append('audio_file', file);
 
+            const activeUser = localStorage.getItem('active_user');
+            if (activeUser) {
+                formData.append('uploaded_by', activeUser);
+            }
+
+
             // Upload progress listener
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
@@ -287,6 +299,15 @@ export default {
             });
         }
 
+        const userFilterInput = document.getElementById('user-filter');
+        if (userFilterInput) {
+            userFilterInput.addEventListener('input', async (e) => {
+                this.userFilter = e.target.value.trim();
+                this.skip = 0;
+                await this.loadConversations();
+            });
+        }
+
         if (btnPrev) {
             btnPrev.addEventListener('click', async () => {
                 this.skip = Math.max(0, this.skip - this.limit);
@@ -319,7 +340,8 @@ export default {
                 this.statusFilter,
                 this.speakerFilter || null,
                 this.startDateFilter || null,
-                this.endDateFilter || null
+                this.endDateFilter || null,
+                this.userFilter || null
             );
 
             this.total = data.total;
@@ -327,7 +349,7 @@ export default {
             if (data.conversations.length === 0) {
                 list.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
                             No conversations found.
                         </td>
                     </tr>
@@ -355,6 +377,9 @@ export default {
                         <td style="color: var(--text-muted);">${dateStr}</td>
                         <td>${durationStr}</td>
                         <td><span class="badge badge-info">${conv.num_speakers}</span></td>
+                        <td style="color: var(--text-muted); font-size: 0.85rem;">
+                            <span class="badge" style="background: rgba(255,255,255,0.03); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.06); font-family: monospace; padding: 2px 6px;">${conv.uploaded_by || 'system'}</span>
+                        </td>
                         <td><span class="badge ${statusClass}">${conv.status}</span></td>
                         <td style="text-align: right;" class="action-cell">
                             <select class="form-control download-format-select" data-id="${conv.id}" style="width: 100px; height: 28px; padding: 2px 4px; font-size: 0.75rem; display: inline-block; margin-right: 8px; vertical-align: middle;">
