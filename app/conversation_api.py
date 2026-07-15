@@ -229,6 +229,133 @@ def _background_reprocess(conversation_id: int, threshold: float):
         db.close()
 
 
+@router.post("/rematch-speakers-global")
+async def rematch_speakers_globally(
+    db: Session = Depends(get_db)
+):
+    """
+    Rematch unknown speakers across ALL conversations with known/trained voice profiles.
+    Does NOT rerun Whisper or Pyannote, uses stored embeddings.
+    """
+    import numpy as np
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    # Get known speakers (names not starting with "Unknown_")
+    known_speakers = db.query(Speaker).filter(~Speaker.name.like("Unknown_%")).all()
+    if not known_speakers:
+        return {"message": "No trained/known speaker profiles available to match against", "updated_segments": 0}
+
+    # Get threshold
+    config = get_config()
+    settings = config.get_settings()
+    threshold = settings.speaker_threshold
+
+    # Get all segments belonging to Unknown speakers
+    segments = db.query(ConversationSegment).filter(
+        ConversationSegment.speaker_name.like("Unknown_%")
+    ).all()
+
+    updated_count = 0
+    for seg in segments:
+        seg_emb = seg.get_speaker_embedding()
+        if seg_emb is not None and not np.isnan(seg_emb).any():
+            best_match = None
+            best_similarity = threshold
+            
+            for speaker in known_speakers:
+                sp_emb = speaker.get_embedding()
+                if sp_emb is not None and not np.isnan(sp_emb).any():
+                    similarity = cosine_similarity(
+                        seg_emb.reshape(1, -1),
+                        sp_emb.reshape(1, -1)
+                    )[0][0]
+                    
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = speaker
+            
+            if best_match:
+                seg.speaker_id = best_match.id
+                seg.speaker_name = best_match.name
+                seg.confidence = float(best_similarity)
+                updated_count += 1
+
+    if updated_count > 0:
+        db.commit()
+
+    return {
+        "message": f"Successfully rematched {updated_count} segments globally with trained profiles",
+        "updated_segments": updated_count
+    }
+
+
+@router.post("/{conversation_id}/rematch-speakers")
+async def rematch_speakers_in_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Rematch unknown speakers in a specific conversation with known/trained voice profiles.
+    Does NOT rerun Whisper or Pyannote, uses stored embeddings.
+    """
+    import numpy as np
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Get known speakers (names not starting with "Unknown_")
+    known_speakers = db.query(Speaker).filter(~Speaker.name.like("Unknown_%")).all()
+    if not known_speakers:
+        return {"message": "No trained/known speaker profiles available to match against", "updated_segments": 0}
+
+    # Get threshold
+    config = get_config()
+    settings = config.get_settings()
+    threshold = settings.speaker_threshold
+
+    # Get segments
+    segments = db.query(ConversationSegment).filter(
+        ConversationSegment.conversation_id == conversation_id
+    ).all()
+
+    updated_count = 0
+    for seg in segments:
+        # Only rematch segments that are currently Unknown
+        if seg.speaker_name and seg.speaker_name.startswith("Unknown_"):
+            seg_emb = seg.get_speaker_embedding()
+            if seg_emb is not None and not np.isnan(seg_emb).any():
+                best_match = None
+                best_similarity = threshold
+                
+                for speaker in known_speakers:
+                    sp_emb = speaker.get_embedding()
+                    if sp_emb is not None and not np.isnan(sp_emb).any():
+                        similarity = cosine_similarity(
+                            seg_emb.reshape(1, -1),
+                            sp_emb.reshape(1, -1)
+                        )[0][0]
+                        
+                        if similarity > best_similarity:
+                            best_similarity = similarity
+                            best_match = speaker
+                
+                if best_match:
+                    seg.speaker_id = best_match.id
+                    seg.speaker_name = best_match.name
+                    seg.confidence = float(best_similarity)
+                    updated_count += 1
+
+    if updated_count > 0:
+        db.commit()
+
+    return {
+        "message": f"Successfully rematched {updated_count} segments with trained profiles",
+        "updated_segments": updated_count
+    }
+
+
 @router.post("/{conversation_id}/reprocess")
 async def reprocess_conversation(
     conversation_id: int,

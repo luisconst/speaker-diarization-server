@@ -130,11 +130,27 @@ export default {
                     <button class="btn btn-primary" id="btn-save-settings">Save Configurations</button>
                 </div>
             </div>
+
+            <div class="content-card" style="max-width: 800px; margin-top: 24px;">
+                <div class="card-header">
+                    <h2>Bulk Rematch Speakers</h2>
+                </div>
+                <div style="padding: 20px;">
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
+                        This utility scans all conversations in the database and compares all segments currently assigned to <strong>Unknown_*</strong> speakers against your trained/named speaker profiles. If a segment's voice embedding matches a trained speaker, it is automatically re-assigned. 
+                        <br><strong style="color: var(--accent);">This is computed mathematically using stored embeddings and takes only a few seconds. No audio files are reprocessed.</strong>
+                    </p>
+                    <button class="btn btn-primary" id="btn-global-rematch">
+                        <i data-lucide="user-check" style="width: 16px; height: 16px; margin-right: 6px; display: inline-block; vertical-align: middle;"></i> Rematch All Conversations
+                    </button>
+                </div>
+            </div>
         `;
     },
 
     async init() {
         this.setupSliders();
+        this.setupRematchListener();
         await this.loadSettings();
     },
 
@@ -258,9 +274,69 @@ export default {
             }
         });
 
+    setupRematchListener() {
+        const btnGlobalRematch = document.getElementById('btn-global-rematch');
+        if (btnGlobalRematch) {
+            btnGlobalRematch.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to run a global rematch across all conversations? This will link all Unknown voices to your trained profiles where possible.')) {
+                    try {
+                        btnGlobalRematch.disabled = true;
+                        const originalHtml = btnGlobalRematch.innerHTML;
+                        btnGlobalRematch.innerHTML = '<i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 14px; height: 14px; margin-right: 6px; display: inline-block; vertical-align: middle;"></i> Rematching...';
+                        lucide.createIcons();
+                        
+                        window.showToast('Global speaker rematch started...', 'warning');
+                        const res = await api.rematchSpeakersGlobally();
+                        window.showToast(res.message, 'success');
+                        
+                        btnGlobalRematch.innerHTML = originalHtml;
+                        lucide.createIcons();
+                    } catch (e) {
+                        window.showToast(`Global rematch failed: ${e.message}`, 'danger');
+                    } finally {
+                        btnGlobalRematch.disabled = false;
+                    }
+                }
+            });
+        }
+    },
+
+    async saveSettings() {
+        const fields = [
+            'speaker_threshold', 'emotion_threshold', 'context_padding',
+            'silence_duration', 'whisper_model', 'whisper_language',
+            'cleanup_vram_threshold_gb'
+        ];
+
+        const checkboxes = ['filter_hallucinations', 'enable_personalized_emotions', 'offline_mode'];
+
+        const payload = {};
+        
+        // Grab values
+        fields.forEach(field => {
+            const el = document.getElementById(field);
+            if (el) {
+                // Parse float/ints if numerical
+                if (field === 'speaker_threshold' || field === 'emotion_threshold' || field === 'context_padding' || field === 'silence_duration') {
+                    payload[field] = parseFloat(el.value);
+                } else if (field === 'cleanup_vram_threshold_gb') {
+                    payload[field] = parseInt(el.value);
+                } else {
+                    payload[field] = el.value;
+                }
+            }
+        });
+
+        checkboxes.forEach(field => {
+            const el = document.getElementById(field);
+            if (el) {
+                payload[field] = el.checked;
+            }
+        });
+
         try {
             const btnSave = document.getElementById('btn-save-settings');
-            btnSave.disabled = true;
+            if (btnSave) btnSave.disabled = true;
             window.showToast('Saving settings...', 'warning');
             
             const updated = await api.saveSettings(payload);

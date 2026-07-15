@@ -24,6 +24,9 @@ export default {
                                 <button class="btn btn-secondary" id="btn-recalc-emotions" title="Re-evaluate emotions with personalized profiles">
                                     <i data-lucide="smile"></i> Recalculate Emotions
                                 </button>
+                                <button class="btn btn-secondary" id="btn-rematch-speakers" title="Instantly match all Unknown voices in this conversation against your trained voice profiles (Fast, no audio re-processing)">
+                                    <i data-lucide="user-check"></i> Rematch Speakers
+                                </button>
                                 <button class="btn btn-secondary" id="btn-reprocess" title="Run full diarization & whisper pipeline again">
                                     <i data-lucide="refresh-cw"></i> Reprocess Audio
                                 </button>
@@ -416,6 +419,26 @@ export default {
                         btnReprocess.disabled = false;
                         btnReprocess.innerHTML = originalHtml;
                         lucide.createIcons();
+                    }
+                }
+            });
+        }
+
+        // Rematch Speakers
+        const btnRematch = document.getElementById('btn-rematch-speakers');
+        if (btnRematch) {
+            btnRematch.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to search and match all Unknown speakers in this transcript with your trained voice profiles? This is fast and will not change manually corrected names.')) {
+                    try {
+                        btnRematch.disabled = true;
+                        window.showToast('Rematching speakers against trained profiles...', 'warning');
+                        const res = await api.rematchSpeakers(this.conversationId);
+                        window.showToast(res.message, 'success');
+                        await this.loadData();
+                    } catch (e) {
+                        window.showToast(`Rematch failed: ${e.message}`, 'danger');
+                    } finally {
+                        btnRematch.disabled = false;
                     }
                 }
             });

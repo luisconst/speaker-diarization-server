@@ -155,6 +155,18 @@ class ApiClient {
         });
     }
 
+    async rematchSpeakers(id) {
+        return this._request(`/api/v1/conversations/${id}/rematch-speakers`, {
+            method: 'POST'
+        });
+    }
+
+    async rematchSpeakersGlobally() {
+        return this._request(`/api/v1/conversations/rematch-speakers-global`, {
+            method: 'POST'
+        });
+    }
+
     async recalculateEmotions(id) {
         return this._request(`/api/v1/conversations/${id}/recalculate-emotions`, {
             method: 'POST'
