@@ -332,9 +332,9 @@ export default {
             return;
         }
 
-        const segments = this.conversation.transcript_segments;
+        const segments = this.conversation.transcript_segments || [];
 
-        if (!segments || segments.length === 0) {
+        if (segments.length === 0) {
             list.innerHTML = `
                 <div style="text-align: center; color: var(--text-muted); padding: 40px;">
                     No transcript segments generated yet.
@@ -347,14 +347,15 @@ export default {
         segments.sort((a, b) => a.start_offset - b.start_offset);
 
         // Inject the datalist for speaker autocompletion
-        const datalistHtml = `<datalist id="speakers-datalist">${this.speakers.map(sp => `<option value="${sp.name}"></option>`).join('')}</datalist>`;
+        const speakersList = Array.isArray(this.speakers) ? this.speakers : [];
+        const datalistHtml = `<datalist id="speakers-datalist">${speakersList.map(sp => `<option value="${sp.name || ''}"></option>`).join('')}</datalist>`;
 
         // Group consecutive segments by speaker
         const groups = [];
         let currentGroup = null;
 
         for (const seg of segments) {
-            const speakerKey = seg.speaker_name || 'Unknown';
+            const speakerKey = String(seg.speaker_name || 'Unknown');
             if (!currentGroup || currentGroup.speaker !== speakerKey) {
                 currentGroup = {
                     speaker: speakerKey,
@@ -370,8 +371,9 @@ export default {
         // Helper to hash speaker name to a deterministic color
         const hashCode = (str) => {
             let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
+            const s = String(str || '');
+            for (let i = 0; i < s.length; i++) {
+                const char = s.charCodeAt(i);
                 hash = ((hash << 5) - hash) + char;
                 hash |= 0;
             }
@@ -380,8 +382,9 @@ export default {
         const speakerColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
         let groupsHtml = groups.map(group => {
-            const speakerColor = speakerColors[Math.abs(hashCode(group.speaker)) % speakerColors.length];
-            const isUnknown = group.speaker.startsWith('Unknown_') || group.speaker === 'Unknown';
+            const speakerStr = String(group.speaker || 'Unknown');
+            const speakerColor = speakerColors[Math.abs(hashCode(speakerStr)) % speakerColors.length];
+            const isUnknown = speakerStr.startsWith('Unknown_') || speakerStr === 'Unknown';
             const bgStyle = isUnknown 
                 ? 'background-color: rgba(255, 255, 255, 0.04); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);' 
                 : `background-color: rgba(99, 102, 241, 0.05); color: ${speakerColor}; border: 1px solid ${speakerColor}40;`;
@@ -460,14 +463,14 @@ export default {
             }).join('');
 
             return `
-                <div class="speaker-group" data-speaker="${group.speaker}" style="margin-bottom: 12px; background: rgba(255,255,255,0.01); border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.03);">
+                <div class="speaker-group" data-speaker="${speakerStr}" style="margin-bottom: 12px; background: rgba(255,255,255,0.01); border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.03);">
                     <div class="speaker-group-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.03);">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="speaker-group-name" style="border-left: 3px solid ${speakerColor}; padding-left: 8px; font-weight: 600; font-size: 0.9rem; color: ${isUnknown ? 'var(--text-muted)' : speakerColor};">${group.speaker}</span>
+                            <span class="speaker-group-name" style="border-left: 3px solid ${speakerColor}; padding-left: 8px; font-weight: 600; font-size: 0.9rem; color: ${isUnknown ? 'var(--text-muted)' : speakerColor};">${speakerStr}</span>
                             
                             <!-- Speaker Inline Input with Autocomplete Datalist -->
                             <div style="display: inline-flex; align-items: center; gap: 4px; margin-left: 12px;">
-                                <input type="text" class="form-control speaker-inline-input" data-id="${group.first_segment_id}" data-current-name="${group.speaker}" list="speakers-datalist" value="${isUnknown ? '' : group.speaker}" style="width: 140px; height: 26px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; ${bgStyle}" placeholder="Rename speaker..." />
+                                <input type="text" class="form-control speaker-inline-input" data-id="${group.first_segment_id}" data-current-name="${speakerStr}" list="speakers-datalist" value="${isUnknown ? '' : speakerStr}" style="width: 140px; height: 26px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; ${bgStyle}" placeholder="Rename speaker..." />
                                 <button class="btn btn-secondary btn-icon-only btn-rename-inline" data-id="${group.first_segment_id}" title="Save speaker identity" style="padding: 2px; width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;">
                                     <i data-lucide="check" style="width: 12px; height: 12px; color: var(--accent);"></i>
                                 </button>
@@ -684,7 +687,8 @@ export default {
                 }
 
                 // Check if the name exists in the enrolled speakers
-                const existingSpeaker = this.speakers.find(sp => sp.name.toLowerCase() === newName.toLowerCase());
+                const speakersList = Array.isArray(this.speakers) ? this.speakers : [];
+                const existingSpeaker = speakersList.find(sp => sp && sp.name && String(sp.name).toLowerCase() === newName.toLowerCase());
 
                 if (existingSpeaker) {
                     // Identify as existing speaker
