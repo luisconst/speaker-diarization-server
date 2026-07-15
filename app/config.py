@@ -5,7 +5,7 @@ Supports runtime updates and persistence.
 import os
 import json
 import logging
-from typing import Dict, Any, Callable, Tuple
+from typing import Dict, Any, Callable, Tuple, Optional
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
