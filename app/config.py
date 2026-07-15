@@ -33,7 +33,7 @@ _ENV_OVERRIDES: Tuple[Tuple[str, str, Callable[[str], Any]], ...] = (
 
 class VoiceSettings(BaseModel):
     """Voice processing settings"""
-    speaker_threshold: float = Field(default=0.30, ge=0.1, le=0.9, description="Speaker similarity threshold (0.1-0.9)")
+    speaker_threshold: float = Field(default=0.70, ge=0.1, le=0.9, description="Speaker similarity threshold (0.1-0.9)")
     context_padding: float = Field(default=0.15, ge=0.05, le=2.0, description="Context padding for embeddings (seconds)")
     silence_duration: float = Field(default=0.5, ge=0.1, le=5.0, description="Silence duration for streaming (seconds)")
     filter_hallucinations: bool = Field(default=True, description="Filter common Whisper hallucinations")

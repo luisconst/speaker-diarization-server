@@ -905,26 +905,23 @@ class SpeakerRecognitionEngine:
         for speaker_id, speaker_name, _ in known_speakers:
             logger.info(f"  - ID: {speaker_id}, Name: {speaker_name}")
 
-        # Run transcription and diarization IN PARALLEL
-        logger.info("Running transcription and diarization in parallel...")
+        # Run transcription and diarization SEQUENTIALLY to prevent CUDA OOM crashes on lower-end GPUs
+        logger.info("Running transcription and diarization sequentially...")
         start_time = time.time()
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            # Submit both tasks to run concurrently
-            transcription_future = executor.submit(self.transcribe, audio_file)
-            diarization_future = executor.submit(self.diarize, audio_file)
+        logger.info("Step 1/2: Running Whisper transcription...")
+        transcription_segments = self.transcribe(audio_file)
 
-            # Wait for both to complete
-            transcription_segments = transcription_future.result()
-            diarization_result = diarization_future.result()
+        logger.info("Step 2/2: Running Pyannote diarization...")
+        diarization_result = self.diarize(audio_file)
 
         elapsed = time.time() - start_time
-        logger.info(f"Parallel processing completed in {elapsed:.2f}s")
+        logger.info(f"Sequential processing completed in {elapsed:.2f}s")
 
-        # Explicit cleanup after parallel processing to free VRAM before emotion extraction
-        del transcription_future, diarization_future
+        # Explicit cleanup to free VRAM before emotion extraction
         gc.collect()
-        self.clear_gpu_cache_async("parallel")
+        self.clear_gpu_cache_async("sequential")
+
 
         # Hoist settings lookups out of the per-segment loop.
         settings = get_config().get_settings()
@@ -1154,7 +1151,7 @@ class SpeakerRecognitionEngine:
             "num_speakers": diarization_result["num_speakers"]
         }
 
-    def match_speaker_with_all_profiles(self, segment_embedding, db_session, threshold=0.35):
+    def match_speaker_with_all_profiles(self, segment_embedding, db_session, threshold=0.70):
         """
         Enhanced speaker matching that checks ALL voice profiles (general + emotion-specific).
 

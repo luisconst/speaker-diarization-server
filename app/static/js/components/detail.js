@@ -18,7 +18,7 @@ export default {
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
                             <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 250px;">
                                 <i data-lucide="message-square" style="color: var(--primary);"></i>
-                                <input type="text" id="conversation-title-input" class="form-control" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 600; background: transparent; border-color: transparent; padding: 4px 8px; width: 100%;" title="Click to edit title" />
+                                <input type="text" id="conversation-title-input" class="form-control" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 600; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 12px; width: 100%; transition: all 0.2s ease;" title="Click to edit title" onfocus="this.style.background='var(--card-bg)'; this.style.borderStyle='solid'; this.style.borderColor='var(--primary)';" onblur="this.style.background='rgba(255,255,255,0.02)'; this.style.borderStyle='dashed'; this.style.borderColor='rgba(255,255,255,0.15)';" onmouseover="this.style.borderColor='rgba(255,255,255,0.35)'" onmouseout="if(document.activeElement!==this)this.style.borderColor='rgba(255,255,255,0.15)'" />
                             </div>
                             <div style="display: flex; gap: 10px;">
                                 <button class="btn btn-secondary" id="btn-recalc-emotions" title="Re-evaluate emotions with personalized profiles">
@@ -362,8 +362,11 @@ export default {
         if (btnReprocess) {
             btnReprocess.addEventListener('click', async () => {
                 if (confirm('Are you sure you want to re-run the diarization and transcription? This will overwrite your manual corrections.')) {
+                    const originalHtml = btnReprocess.innerHTML;
                     try {
                         btnReprocess.disabled = true;
+                        btnReprocess.innerHTML = '<i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 14px; height: 14px; margin-right: 6px; display: inline-block; vertical-align: middle;"></i> Reprocessing...';
+                        lucide.createIcons();
                         window.showToast('Reprocessing started. This will take a moment...', 'warning');
                         await api.reprocessConversation(this.conversationId);
                         window.showToast('Diarization reprocess completed.', 'success');
@@ -372,6 +375,8 @@ export default {
                         window.showToast(`Reprocess failed: ${e.message}`, 'danger');
                     } finally {
                         btnReprocess.disabled = false;
+                        btnReprocess.innerHTML = originalHtml;
+                        lucide.createIcons();
                     }
                 }
             });

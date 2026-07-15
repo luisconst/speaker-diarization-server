@@ -48,13 +48,28 @@ async def list_conversations(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     uploaded_by: Optional[str] = None,
+    sort_by: Optional[str] = "start_time",
+    sort_order: Optional[str] = "desc",
     db: Session = Depends(get_db)
 ):
     """
-    List all conversations with pagination and filtering.
+    List all conversations with pagination, filtering, and sorting.
     Returns lightweight summaries without segments for better performance.
     """
-    query = db.query(Conversation).order_by(Conversation.start_time.desc())
+    # Map sort_by string to actual model column attribute safely
+    sort_by_map = {
+        "title": Conversation.title,
+        "start_time": Conversation.start_time,
+        "duration": Conversation.duration,
+        "uploaded_by": Conversation.uploaded_by
+    }
+    
+    order_column = sort_by_map.get(sort_by, Conversation.start_time)
+    
+    if sort_order == "asc":
+        query = db.query(Conversation).order_by(order_column.asc())
+    else:
+        query = db.query(Conversation).order_by(order_column.desc())
 
     if status:
         query = query.filter(Conversation.status == status)

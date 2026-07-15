@@ -9,6 +9,9 @@ export default {
     startDateFilter: '',
     endDateFilter: '',
     userFilter: '',
+    sortBy: 'start_time',
+    sortOrder: 'desc',
+
 
 
     
@@ -76,11 +79,11 @@ export default {
                     <table>
                         <thead>
                             <tr>
-                                <th>Recording Title</th>
-                                <th>Processed Date</th>
-                                <th>Duration</th>
+                                <th id="th-title" data-label="Recording Title" style="cursor: pointer; user-select: none;">Recording Title <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
+                                <th id="th-date" data-label="Processed Date" style="cursor: pointer; user-select: none;">Processed Date <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
+                                <th id="th-duration" data-label="Duration" style="cursor: pointer; user-select: none;">Duration <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
                                 <th>Speakers</th>
-                                <th>Uploaded By</th>
+                                <th id="th-user" data-label="Uploaded By" style="cursor: pointer; user-select: none;">Uploaded By <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
                                 <th>Status</th>
                                 <th style="text-align: right; width: 180px;">Actions</th>
                             </tr>
@@ -308,6 +311,29 @@ export default {
             });
         }
 
+        const sortHeaders = [
+            { id: 'th-title', column: 'title' },
+            { id: 'th-date', column: 'start_time' },
+            { id: 'th-duration', column: 'duration' },
+            { id: 'th-user', column: 'uploaded_by' }
+        ];
+
+        sortHeaders.forEach(({ id, column }) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('click', async () => {
+                    if (this.sortBy === column) {
+                        this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        this.sortBy = column;
+                        this.sortOrder = 'desc';
+                    }
+                    this.skip = 0;
+                    await this.loadConversations();
+                });
+            }
+        });
+
         if (btnPrev) {
             btnPrev.addEventListener('click', async () => {
                 this.skip = Math.max(0, this.skip - this.limit);
@@ -334,6 +360,7 @@ export default {
         if (!list) return;
 
         try {
+            this.updateHeaderSortIndicators();
             const data = await api.getConversations(
                 this.skip, 
                 this.limit, 
@@ -341,7 +368,9 @@ export default {
                 this.speakerFilter || null,
                 this.startDateFilter || null,
                 this.endDateFilter || null,
-                this.userFilter || null
+                this.userFilter || null,
+                this.sortBy,
+                this.sortOrder
             );
 
             this.total = data.total;
@@ -457,6 +486,27 @@ export default {
         } catch (error) {
             console.error('Failed to load conversations:', error);
             window.showToast('Failed to load conversations.', 'danger');
+        }
+    },
+
+    updateHeaderSortIndicators() {
+        const headers = {
+            'title': document.getElementById('th-title'),
+            'start_time': document.getElementById('th-date'),
+            'duration': document.getElementById('th-duration'),
+            'uploaded_by': document.getElementById('th-user')
+        };
+        
+        for (const [col, th] of Object.entries(headers)) {
+            if (!th) continue;
+            const label = th.getAttribute('data-label');
+            if (this.sortBy === col) {
+                th.innerHTML = `${label} ${this.sortOrder === 'asc' ? '▲' : '▼'}`;
+                th.style.color = 'var(--primary)';
+            } else {
+                th.innerHTML = `${label} <span style="opacity: 0.3; font-size: 0.8rem;">↕</span>`;
+                th.style.color = '';
+            }
         }
     },
 
