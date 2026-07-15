@@ -18,6 +18,7 @@ from .schemas import (
     ConversationUpdate,
     IdentifySpeakerRequest,
     ToggleMisidentifiedRequest,
+    SegmentTextUpdate,
 )
 from .diarization import SpeakerRecognitionEngine
 from .api import get_engine
@@ -61,7 +62,8 @@ async def list_conversations(
         "title": Conversation.title,
         "start_time": Conversation.start_time,
         "duration": Conversation.duration,
-        "uploaded_by": Conversation.uploaded_by
+        "uploaded_by": Conversation.uploaded_by,
+        "updated_at": Conversation.updated_at
     }
     
     order_column = sort_by_map.get(sort_by, Conversation.start_time)
@@ -282,6 +284,8 @@ async def rematch_speakers_globally(
 
     if updated_count > 0:
         db.commit()
+        cleanup_orphaned_unknowns(db)
+        db.commit()
 
     return {
         "message": f"Successfully rematched {updated_count} segments globally with trained profiles",
@@ -348,6 +352,8 @@ async def rematch_speakers_in_conversation(
                     updated_count += 1
 
     if updated_count > 0:
+        db.commit()
+        cleanup_orphaned_unknowns(db)
         db.commit()
 
     return {
@@ -731,6 +737,29 @@ async def identify_speaker_in_segment(
         "enrolled": enroll,
         "segments_updated": updated_count + 1
     }
+
+
+@router.patch("/{conversation_id}/segments/{segment_id}/text")
+async def update_segment_text(
+    conversation_id: int,
+    segment_id: int,
+    request: SegmentTextUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update the text of a conversation segment"""
+    segment = db.query(ConversationSegment).filter(
+        ConversationSegment.id == segment_id,
+        ConversationSegment.conversation_id == conversation_id
+    ).first()
+
+    if not segment:
+        raise HTTPException(status_code=404, detail="Segment not found")
+
+    segment.text = request.text
+    db.commit()
+    db.refresh(segment)
+
+    return {"message": "Segment text updated successfully", "text": segment.text}
 
 
 @router.patch("/{conversation_id}/segments/{segment_id}/misidentified")

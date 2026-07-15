@@ -328,7 +328,7 @@ export default {
                     </div>
 
                     <!-- Transcript Content -->
-                    <div class="segment-text" id="seg-text-${seg.id}">${seg.text || '<i>[No speech detected]</i>'}</div>
+                    <div class="segment-text editable-transcript-text" id="seg-text-${seg.id}" contenteditable="true" title="Click to edit transcript text" style="outline: none; border-radius: 4px; padding: 4px 8px; margin: 4px -8px; transition: all 0.2s; min-height: 24px;" data-id="${seg.id}">${seg.text || ''}</div>
 
                     <!-- Custom timeline progress (only visible while playing) -->
                     <div class="mini-player" id="mini-player-${seg.id}" style="display: none; margin-top: 8px;">
@@ -654,6 +654,36 @@ export default {
                     const width = rect.width;
                     const pct = clickX / width;
                     this.audioPlayer.currentTime = pct * this.audioPlayer.duration;
+                }
+            });
+        });
+
+        // Inline transcript text editing
+        list.querySelectorAll('.editable-transcript-text').forEach(el => {
+            el.addEventListener('blur', async () => {
+                const segmentId = el.getAttribute('data-id');
+                const originalText = this.conversation.transcript_segments.find(s => s.id == segmentId)?.text || '';
+                const newText = el.textContent.trim();
+                
+                if (newText !== originalText) {
+                    try {
+                        await api.updateSegmentText(this.conversationId, segmentId, newText);
+                        window.showToast('Transcript updated.', 'success');
+                        // Update local cache
+                        const seg = this.conversation.transcript_segments.find(s => s.id == segmentId);
+                        if (seg) seg.text = newText;
+                    } catch (err) {
+                        window.showToast(`Failed to update transcript: ${err.message}`, 'danger');
+                        el.textContent = originalText;
+                    }
+                }
+            });
+            
+            // Also handle Enter to save / blur (unless Shift+Enter is pressed for newline)
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    el.blur();
                 }
             });
         });

@@ -78,7 +78,7 @@ export default {
             const [status, speakers, convsResponse] = await Promise.all([
                 api.getStatus(),
                 api.getSpeakers(),
-                api.getConversations(0, 5)
+                api.getConversations(0, 5, null, null, null, null, null, 'updated_at', 'desc')
             ]);
 
             // Update stats

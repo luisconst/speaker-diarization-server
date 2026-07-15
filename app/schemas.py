@@ -145,3 +145,7 @@ class IdentifySpeakerRequest(BaseModel):
 
 class ToggleMisidentifiedRequest(BaseModel):
     is_misidentified: bool
+
+
+class SegmentTextUpdate(BaseModel):
+    text: str

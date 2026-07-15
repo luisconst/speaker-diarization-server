@@ -173,6 +173,16 @@ class ApiClient {
         });
     }
 
+    async updateSegmentText(conversationId, segmentId, text) {
+        return this._request(`/api/v1/conversations/${conversationId}/segments/${segmentId}/text`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text })
+        });
+    }
+
     // Segment and Human-in-the-loop Endpoints
     async identifySpeakerInSegment(conversationId, segmentId, { speakerId = null, speakerName = null, enroll = true }) {
         return this._request(`/api/v1/conversations/${conversationId}/segments/${segmentId}/identify`, {
