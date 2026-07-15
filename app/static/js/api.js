@@ -261,6 +261,10 @@ class ApiClient {
         });
     }
 
+    async getPrompts() {
+        return this._request('/api/v1/conversations/prompts');
+    }
+
     // Profiles and Checkpoints (Backup & Restore)
     async getProfiles() {
         return this._request('/api/v1/profiles');

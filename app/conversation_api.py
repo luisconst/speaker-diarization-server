@@ -156,6 +156,37 @@ async def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
     return conversation
 
 
+@router.get("/{conversation_id}/audio")
+async def download_conversation_audio(conversation_id: int, db: Session = Depends(get_db)):
+    """Download the full original audio file of a conversation"""
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    if not conversation.audio_path or not os.path.exists(conversation.audio_path):
+        raise HTTPException(status_code=404, detail="Audio file not found or deleted")
+        
+    ext = os.path.splitext(conversation.audio_path)[1].lower()
+    media_type = "audio/wav"
+    if ext == ".mp3":
+        media_type = "audio/mpeg"
+    elif ext == ".m4a":
+        media_type = "audio/mp4"
+    elif ext == ".flac":
+        media_type = "audio/flac"
+    elif ext == ".ogg":
+        media_type = "audio/ogg"
+        
+    safe_title = "".join([c if c.isalnum() or c in " .-_()" else "_" for c in conversation.title]) if conversation.title else f"conversation_{conversation_id}"
+    filename = f"{safe_title}{ext}"
+    
+    return FileResponse(
+        path=conversation.audio_path,
+        media_type=media_type,
+        filename=filename
+    )
+
+
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
 async def update_conversation(

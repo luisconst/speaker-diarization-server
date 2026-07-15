@@ -40,9 +40,6 @@ export default {
                                 <button class="btn btn-secondary" id="btn-summarize" title="Generate AI summary of the meeting/lesson using local Ollama">
                                     <i data-lucide="sparkles"></i> Generate Summary
                                 </button>
-                                <button class="btn btn-secondary" id="btn-export-md" title="Export to Markdown format">
-                                    <i data-lucide="file-text"></i> Export Markdown
-                                </button>
                                 <button class="btn btn-secondary" id="btn-reprocess" title="Run full diarization & whisper pipeline again">
                                     <i data-lucide="refresh-cw"></i> Reprocess Audio
                                 </button>
@@ -104,10 +101,10 @@ export default {
                         </div>
                     </div>
 
-                    <!-- Export Transcripts Card -->
+                    <!-- Export & Download Card -->
                     <div class="content-card">
                         <div class="card-header" style="margin-bottom: 16px;">
-                            <h2>Export Transcript</h2>
+                            <h2>Export & Download</h2>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                             <button class="btn btn-secondary btn-export" data-format="txt" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
@@ -121,6 +118,12 @@ export default {
                             </button>
                             <button class="btn btn-secondary btn-export" data-format="json" style="padding: 6px 10px; font-size: 0.8rem; font-weight: 600;">
                                 <i data-lucide="braces" style="width: 14px; height: 14px; color: var(--accent);"></i> JSON
+                            </button>
+                            <button class="btn btn-secondary" id="btn-export-md" style="grid-column: span 2; padding: 6px 10px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                                <i data-lucide="file-text" style="width: 14px; height: 14px; color: var(--accent);"></i> Export Markdown
+                            </button>
+                            <button class="btn btn-primary" id="btn-download-audio" style="grid-column: span 2; padding: 6px 10px; font-size: 0.8rem; font-weight: 600; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                                <i data-lucide="download" style="width: 14px; height: 14px; color: #fff;"></i> Download Audio
                             </button>
                         </div>
                     </div>
@@ -623,6 +626,15 @@ export default {
         if (btnExportMd) {
             btnExportMd.addEventListener('click', () => {
                 const url = api.getExportTranscriptUrl(this.conversationId, 'markdown');
+                window.open(url, '_blank');
+            });
+        }
+
+        // Download original audio file
+        const btnDownloadAudio = document.getElementById('btn-download-audio');
+        if (btnDownloadAudio) {
+            btnDownloadAudio.addEventListener('click', () => {
+                const url = `/api/v1/conversations/${this.conversationId}/audio`;
                 window.open(url, '_blank');
             });
         }
