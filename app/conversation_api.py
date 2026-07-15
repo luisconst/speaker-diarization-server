@@ -1,7 +1,7 @@
 """
 API endpoints for conversation management
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -170,13 +170,72 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     return {"message": f"Conversation {conversation_id} deleted"}
 
 
+def _background_reprocess(conversation_id: int, threshold: float):
+    from .database import SessionLocal
+    db = SessionLocal()
+    try:
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        if not conversation:
+            logger.error(f"Background reprocess failed: Conversation {conversation_id} not found")
+            return
+            
+        logger.info(f"🔄 Starting background reprocessing for conversation {conversation_id}...")
+
+        # Load engine
+        engine = get_engine()
+        known_speakers = load_known_speakers(db)
+        
+        # Run sequential transcription + diarization pipeline
+        result = engine.transcribe_with_diarization(
+            conversation.audio_path,
+            known_speakers,
+            threshold=threshold,
+            db_session=db
+        )
+
+        # Delete old segments
+        db.query(ConversationSegment).filter(
+            ConversationSegment.conversation_id == conversation_id
+        ).delete(synchronize_session=False)
+
+        # Create new segments
+        conv_start = conversation.start_time
+        for seg in result["segments"]:
+            create_segment_from_result(
+                seg, conversation_id, conv_start, db, threshold
+            )
+
+        # Update conversation stats
+        conversation.status = "completed"
+        conversation.num_segments = len(result["segments"])
+        conversation.num_speakers = result["num_speakers"]
+        conversation.updated_at = utc_now()
+        db.commit()
+
+        # Clear GPU cache
+        engine.clear_gpu_cache()
+        logger.info(f"✓ Background reprocess completed for conversation {conversation_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Background reprocess failed for conversation {conversation_id}: {e}")
+        try:
+            conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            if conversation:
+                conversation.status = "failed"
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 @router.post("/{conversation_id}/reprocess")
 async def reprocess_conversation(
     conversation_id: int,
-    db: Session = Depends(get_db),
-    engine: SpeakerRecognitionEngine = Depends(get_engine)
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
 ):
-    """Re-process conversation with current speaker profiles (works with MP3)"""
+    """Re-process conversation with current speaker profiles in the background"""
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
@@ -187,44 +246,18 @@ async def reprocess_conversation(
     if not conversation.audio_path or not os.path.exists(conversation.audio_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    known_speakers = load_known_speakers(db)
+    # Set status to processing immediately to show in the list/dashboard
+    conversation.status = "processing"
+    db.commit()
 
-    # Get threshold from config (consistent with all other endpoints)
     config = get_config()
     settings = config.get_settings()
     threshold = settings.speaker_threshold
-    result = await asyncio.to_thread(
-        engine.transcribe_with_diarization,
-        conversation.audio_path,
-        known_speakers,
-        threshold=threshold,
-        db_session=db  # Enable personalized emotion matching
-    )
 
-    # Delete old segments (synchronize_session=False avoids FK constraint issues)
-    db.query(ConversationSegment).filter(
-        ConversationSegment.conversation_id == conversation_id
-    ).delete(synchronize_session=False)
+    # Queue background task
+    background_tasks.add_task(_background_reprocess, conversation_id, threshold)
 
-    # Create new segments
-    conv_start = conversation.start_time
-
-    for seg in result["segments"]:
-        create_segment_from_result(
-            seg, conversation_id, conv_start, db, threshold
-        )
-
-    # Update conversation stats
-    conversation.status = "completed"
-    conversation.num_segments = len(result["segments"])
-    conversation.num_speakers = result["num_speakers"]
-
-    db.commit()
-
-    # Clear GPU cache after reprocessing
-    engine.clear_gpu_cache()
-
-    return {"message": "Conversation reprocessed", "segments": len(result["segments"])}
+    return {"message": "Reprocessing started in background", "status": "processing"}
 
 
 @router.post("/{conversation_id}/recalculate-emotions")
@@ -1254,6 +1287,13 @@ async def export_conversation_transcript(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    import re
+    # Convert title to a safe filename
+    safe_title = re.sub(r'[^\w\s-]', '', conversation.title or f"transcript_{conversation_id}")
+    safe_title = safe_title.strip().replace(' ', '_')
+    if not safe_title:
+        safe_title = f"transcript_{conversation_id}"
+
     segments = db.query(ConversationSegment).filter(
         ConversationSegment.conversation_id == conversation_id
     ).order_by(ConversationSegment.start_offset.asc()).all()
@@ -1270,7 +1310,7 @@ async def export_conversation_transcript(
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content=data,
-            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.json"}
+            headers={"Content-Disposition": f"attachment; filename={safe_title}.json"}
         )
 
     elif format == "txt":
@@ -1285,7 +1325,7 @@ async def export_conversation_transcript(
         return Response(
             content=content,
             media_type="text/plain",
-            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.txt"}
+            headers={"Content-Disposition": f"attachment; filename={safe_title}.txt"}
         )
 
     elif format == "srt":
@@ -1301,7 +1341,7 @@ async def export_conversation_transcript(
         return Response(
             content=content,
             media_type="text/srt",
-            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.srt"}
+            headers={"Content-Disposition": f"attachment; filename={safe_title}.srt"}
         )
 
     elif format == "vtt":
@@ -1317,6 +1357,6 @@ async def export_conversation_transcript(
         return Response(
             content=content,
             media_type="text/vtt",
-            headers={"Content-Disposition": f"attachment; filename=transcript_{conversation_id}.vtt"}
+            headers={"Content-Disposition": f"attachment; filename={safe_title}.vtt"}
         )
 

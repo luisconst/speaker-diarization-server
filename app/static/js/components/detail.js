@@ -148,6 +148,11 @@ export default {
         this.audioPlayer.addEventListener('ended', () => this.handleAudioEnded());
         this.audioPlayer.addEventListener('pause', () => this.handleAudioEnded());
 
+        if (this.pollTimeout) {
+            clearTimeout(this.pollTimeout);
+            this.pollTimeout = null;
+        }
+
         await this.loadData();
         this.setupActionListeners();
     },
@@ -166,6 +171,27 @@ export default {
             // Render details
             this.renderHeaderAndSidebar();
             this.renderSegments();
+
+            // Handle polling if processing in the background
+            if (this.conversation.status === 'processing') {
+                const btnReprocess = document.getElementById('btn-reprocess');
+                const btnRecalc = document.getElementById('btn-recalc-emotions');
+                if (btnReprocess) {
+                    btnReprocess.disabled = true;
+                    btnReprocess.innerHTML = '<i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 14px; height: 14px; margin-right: 6px; display: inline-block; vertical-align: middle;"></i> Reprocessing...';
+                    lucide.createIcons();
+                }
+                if (btnRecalc) {
+                    btnRecalc.disabled = true;
+                }
+
+                if (this.pollTimeout) clearTimeout(this.pollTimeout);
+                this.pollTimeout = setTimeout(async () => {
+                    if (window.location.hash === `#/conversations/${this.conversationId}`) {
+                        await this.loadData();
+                    }
+                }, 3000);
+            }
 
         } catch (error) {
             console.error('Failed to load conversation details:', error);
@@ -217,6 +243,19 @@ export default {
     renderSegments() {
         const list = document.getElementById('detail-segments-list');
         if (!list || !this.conversation) return;
+
+        if (this.conversation.status === 'processing') {
+            list.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 60px 40px; display: flex; flex-direction: column; align-items: center; gap: 16px;">
+                    <div class="spinner" style="width: 32px; height: 32px; border-width: 3px; border-top-color: var(--primary);"></div>
+                    <div style="font-weight: 500; font-size: 1.1rem; color: var(--text);">Reprocessing Audio...</div>
+                    <p style="max-width: 400px; font-size: 0.85rem; line-height: 1.5; color: var(--text-muted);">
+                        The Whisper model is transcribing and the Pyannote diarization model is grouping speakers. You can leave this page; processing will continue in the background.
+                    </p>
+                </div>
+            `;
+            return;
+        }
 
         const segments = this.conversation.transcript_segments;
 

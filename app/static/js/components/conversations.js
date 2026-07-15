@@ -115,6 +115,10 @@ export default {
     },
 
     async init() {
+        if (this.pollTimeout) {
+            clearTimeout(this.pollTimeout);
+            this.pollTimeout = null;
+        }
         this.setupUploadHandlers();
         this.setupFiltersAndPagination();
         await this.loadSpeakersList();
@@ -398,6 +402,14 @@ export default {
                 const dateStr = window.formatDate(conv.start_time);
                 const title = conv.title || `Conversation #${conv.id}`;
 
+                let statusHtml = `<span class="badge ${statusClass}">${conv.status}</span>`;
+                if (conv.status === 'processing') {
+                    statusHtml = `<span class="badge badge-warning" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px;">
+                        <i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 10px; height: 10px; display: inline-block;"></i>
+                        processing
+                    </span>`;
+                }
+
                 return `
                     <tr class="interactive-row" data-id="${conv.id}">
                         <td style="font-weight: 550; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -409,7 +421,7 @@ export default {
                         <td style="color: var(--text-muted); font-size: 0.85rem;">
                             <span class="badge" style="background: rgba(255,255,255,0.03); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.06); font-family: monospace; padding: 2px 6px;">${conv.uploaded_by || 'system'}</span>
                         </td>
-                        <td><span class="badge ${statusClass}">${conv.status}</span></td>
+                        <td>${statusHtml}</td>
                         <td style="text-align: right;" class="action-cell">
                             <select class="form-control download-format-select" data-id="${conv.id}" style="width: 100px; height: 28px; padding: 2px 4px; font-size: 0.75rem; display: inline-block; margin-right: 8px; vertical-align: middle;">
                                 <option value="">Download...</option>
@@ -482,6 +494,16 @@ export default {
                 });
             });
 
+
+            // If any conversation is currently processing, poll in the background
+            if (data.conversations.some(c => c.status === 'processing')) {
+                if (this.pollTimeout) clearTimeout(this.pollTimeout);
+                this.pollTimeout = setTimeout(async () => {
+                    if (window.location.hash === '#/conversations' || window.location.hash === '') {
+                        await this.loadConversations();
+                    }
+                }, 4000);
+            }
 
         } catch (error) {
             console.error('Failed to load conversations:', error);

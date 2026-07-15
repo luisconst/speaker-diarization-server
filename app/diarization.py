@@ -1146,8 +1146,61 @@ class SpeakerRecognitionEngine:
 
             transcribed_with_speakers.append(segment_data)
 
+        # Consolidate consecutive segments from the same speaker to prevent excessive fragmentation
+        consolidated = []
+        max_gap = 1.5  # Max gap in seconds to merge segments from same speaker
+
+        for seg in transcribed_with_speakers:
+            if not consolidated:
+                consolidated.append(seg)
+                continue
+
+            last = consolidated[-1]
+            # Check if speaker is the same and the gap is small
+            if last["speaker"] == seg["speaker"] and (seg["start"] - last["end"] <= max_gap):
+                # Merge seg into last
+                last["end"] = seg["end"]
+                last["text"] = (last["text"].strip() + " " + seg["text"].strip()).strip()
+                
+                # Concatenate words
+                if last.get("words") and seg.get("words"):
+                    last["words"] = last["words"] + seg["words"]
+                elif seg.get("words"):
+                    last["words"] = seg["words"]
+                
+                # Merge speaker embeddings (average)
+                if last.get("embedding") is not None and seg.get("embedding") is not None:
+                    last["embedding"] = (last["embedding"] + seg["embedding"]) / 2.0
+                elif seg.get("embedding") is not None:
+                    last["embedding"] = seg["embedding"]
+                
+                # Merge emotion embeddings (average)
+                if last.get("emotion_embedding") is not None and seg.get("emotion_embedding") is not None:
+                    last["emotion_embedding"] = (last["emotion_embedding"] + seg["emotion_embedding"]) / 2.0
+                elif seg.get("emotion_embedding") is not None:
+                    last["emotion_embedding"] = seg["emotion_embedding"]
+
+                # Update emotion if the new segment has higher confidence
+                last_emo_conf = last.get("emotion_confidence") or 0.0
+                seg_emo_conf = seg.get("emotion_confidence") or 0.0
+                if seg_emo_conf > last_emo_conf:
+                    last["emotion_category"] = seg.get("emotion_category")
+                    last["emotion_confidence"] = seg.get("emotion_confidence")
+                    last["detector_breakdown"] = seg.get("detector_breakdown")
+                
+                # Average confidence
+                last["confidence"] = (last["confidence"] + seg["confidence"]) / 2.0
+                
+                # Average log probabilities
+                if last.get("avg_logprob") is not None and seg.get("avg_logprob") is not None:
+                    last["avg_logprob"] = (last["avg_logprob"] + seg["avg_logprob"]) / 2.0
+                elif seg.get("avg_logprob") is not None:
+                    last["avg_logprob"] = seg["avg_logprob"]
+            else:
+                consolidated.append(seg)
+
         return {
-            "segments": transcribed_with_speakers,
+            "segments": consolidated,
             "num_speakers": diarization_result["num_speakers"]
         }
 

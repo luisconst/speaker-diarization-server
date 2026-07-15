@@ -69,6 +69,10 @@ export default {
     },
 
     async init() {
+        if (this.pollTimeout) {
+            clearTimeout(this.pollTimeout);
+            this.pollTimeout = null;
+        }
         try {
             // Fetch status, speakers, and recent conversations in parallel
             const [status, speakers, convsResponse] = await Promise.all([
@@ -108,16 +112,26 @@ export default {
 
                     const title = conv.title || `Conversation #${conv.id}`;
 
+                    let statusHtml = `<span class="badge ${statusClass}">${conv.status}</span>`;
+                    if (conv.status === 'processing') {
+                        statusHtml = `<span class="badge badge-warning" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px;">
+                            <i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 10px; height: 10px; display: inline-block;"></i>
+                            processing
+                        </span>`;
+                    }
+
                     return `
                         <tr class="interactive-row" data-id="${conv.id}">
                             <td style="font-weight: 500;">${title}</td>
                             <td style="color: var(--text-muted);">${dateStr}</td>
                             <td>${durationStr}</td>
                             <td><span class="badge badge-info">${conv.num_speakers}</span></td>
-                            <td><span class="badge ${statusClass}">${conv.status}</span></td>
+                            <td>${statusHtml}</td>
                         </tr>
                     `;
                 }).join('');
+
+                lucide.createIcons();
 
                 // Make rows clickable
                 recentList.querySelectorAll('.interactive-row').forEach(row => {
@@ -126,6 +140,17 @@ export default {
                         window.location.hash = `#/conversations/${id}`;
                     });
                 });
+            }
+
+            // If any conversation is currently processing, poll in the background
+            if (convsResponse.conversations.some(c => c.status === 'processing')) {
+                if (this.pollTimeout) clearTimeout(this.pollTimeout);
+                this.pollTimeout = setTimeout(async () => {
+                    const activeHash = window.location.hash;
+                    if (activeHash === '#/dashboard' || activeHash === '' || activeHash === '#/') {
+                        await this.init();
+                    }
+                }, 5000);
             }
 
         } catch (error) {
