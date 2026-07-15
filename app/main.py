@@ -34,6 +34,7 @@ from .mcp_api import router as mcp_router
 from .settings_api import router as settings_router
 from .backup_api import router as profiles_router
 from .streaming_websocket import router as streaming_router
+from .agent_api import router as agent_router
 
 
 @asynccontextmanager
@@ -137,6 +138,11 @@ async def lifespan(app: FastAPI):
 
     logger.info("=== All models loaded and ready! ===\n")
 
+    # Start directory watcher in the background
+    import asyncio
+    from .directory_watcher import start_directory_watcher_task
+    asyncio.create_task(start_directory_watcher_task())
+
     yield
     # Cleanup on shutdown (if needed)
 
@@ -169,6 +175,7 @@ app.include_router(conversation_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(profiles_router, prefix="/api/v1")  # Voice Profiles
 app.include_router(streaming_router, prefix="/api/v1")  # WebSocket streaming
+app.include_router(agent_router, prefix="/api/v1")
 app.include_router(mcp_router)  # MCP at /mcp
 
 

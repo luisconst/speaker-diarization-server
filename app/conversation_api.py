@@ -49,6 +49,7 @@ async def list_conversations(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     uploaded_by: Optional[str] = None,
+    category: Optional[str] = None,
     sort_by: Optional[str] = "start_time",
     sort_order: Optional[str] = "desc",
     db: Session = Depends(get_db)
@@ -78,6 +79,9 @@ async def list_conversations(
 
     if uploaded_by:
         query = query.filter(Conversation.uploaded_by == uploaded_by)
+
+    if category:
+        query = query.filter(Conversation.category == category)
 
     if speaker_id is not None:
         query = query.filter(Conversation.transcript_segments.any(ConversationSegment.speaker_id == speaker_id))
@@ -109,6 +113,31 @@ async def list_conversations(
         limit=limit
     )
 
+
+
+@router.get("/categories")
+async def list_categories():
+    """List available conversation categories"""
+    return {
+        "categories": [
+            {"id": "reuniao", "name": "Reunião", "icon": "briefcase"},
+            {"id": "aula", "name": "Aula", "icon": "graduation-cap"},
+            {"id": "encontro", "name": "Encontro", "icon": "users"},
+            {"id": "entrevista", "name": "Entrevista", "icon": "mic"},
+            {"id": "podcast", "name": "Podcast", "icon": "headphones"},
+            {"id": "video", "name": "Vídeo", "icon": "video"},
+            {"id": "outro", "name": "Outro", "icon": "file-text"}
+        ]
+    }
+
+
+@router.get("/users")
+async def list_users(db: Session = Depends(get_db)):
+    """List distinct users who have uploaded conversations"""
+    users = db.query(Conversation.uploaded_by).filter(
+        Conversation.uploaded_by.isnot(None)
+    ).distinct().all()
+    return {"users": [u[0] for u in users if u[0]]}
 
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
@@ -146,9 +175,21 @@ async def update_conversation(
         conversation.title = update_data.title
     if update_data.status is not None:
         conversation.status = update_data.status
+        
+    if update_data.category is not None:
+        conversation.category = update_data.category
+        
+    if update_data.tags is not None:
+        import json as json_module
+        conversation.tags = json_module.dumps(update_data.tags, ensure_ascii=False)
 
     db.commit()
     db.refresh(conversation)
+
+    # Auto-export updated markdown
+    from .services import export_conversation_to_directory
+    export_conversation_to_directory(conversation_id, db)
+
     return conversation
 
 
@@ -218,6 +259,11 @@ def _background_reprocess(conversation_id: int, threshold: float):
         engine.clear_gpu_cache()
         logger.info(f"✓ Background reprocess completed for conversation {conversation_id}")
 
+        # Auto-summarize and export markdown
+        from .services import auto_summarize_and_export
+        import asyncio
+        asyncio.run(auto_summarize_and_export(conversation_id, db))
+
     except Exception as e:
         logger.error(f"❌ Background reprocess failed for conversation {conversation_id}: {e}")
         try:
@@ -258,6 +304,7 @@ async def rematch_speakers_globally(
     ).all()
 
     updated_count = 0
+    updated_conv_ids = set()
     for seg in segments:
         seg_emb = seg.get_speaker_embedding()
         if seg_emb is not None and not np.isnan(seg_emb).any():
@@ -281,11 +328,15 @@ async def rematch_speakers_globally(
                 seg.speaker_name = best_match.name
                 seg.confidence = float(best_similarity)
                 updated_count += 1
+                updated_conv_ids.add(seg.conversation_id)
 
     if updated_count > 0:
         db.commit()
         cleanup_orphaned_unknowns(db)
         db.commit()
+        from .services import export_conversation_to_directory
+        for cid in updated_conv_ids:
+            export_conversation_to_directory(cid, db)
 
     return {
         "message": f"Successfully rematched {updated_count} segments globally with trained profiles",
@@ -355,6 +406,8 @@ async def rematch_speakers_in_conversation(
         db.commit()
         cleanup_orphaned_unknowns(db)
         db.commit()
+        from .services import export_conversation_to_directory
+        export_conversation_to_directory(conversation_id, db)
 
     return {
         "message": f"Successfully rematched {updated_count} segments with trained profiles",
@@ -503,6 +556,122 @@ async def recalculate_emotions(
         "updated": updated_count,
         "skipped": skipped_count,
         "total": len(segments)
+    }
+
+
+@router.post("/{conversation_id}/summarize")
+async def summarize_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db)
+):
+    """Generate AI summary using local Ollama LLM"""
+    from .summarization import SummarizationEngine, DEFAULT_PROMPTS
+    import json as json_module
+    
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    segments = db.query(ConversationSegment).filter(
+        ConversationSegment.conversation_id == conversation_id
+    ).order_by(ConversationSegment.start_offset).all()
+    
+    if not segments:
+        raise HTTPException(status_code=400, detail="No segments to summarize")
+    
+    config = get_config()
+    settings = config.get_settings()
+    ollama_url = getattr(settings, 'ollama_url', 'http://localhost:11434')
+    ollama_model = getattr(settings, 'ollama_model', 'llama3')
+    
+    engine = SummarizationEngine(ollama_url=ollama_url, model=ollama_model)
+    
+    # Check availability
+    available = await engine.is_available()
+    if not available:
+        raise HTTPException(status_code=503, detail="Ollama is not running or not accessible. Make sure it is started on your server/local machine.")
+    
+    # Build transcript text
+    transcript = engine.build_transcript_text(segments)
+    
+    # Determine prompt
+    custom_prompts = None
+    cfg_custom = getattr(settings, 'custom_prompts', None)
+    if cfg_custom:
+        if isinstance(cfg_custom, str):
+            try:
+                custom_prompts = json_module.loads(cfg_custom)
+            except Exception:
+                pass
+        elif isinstance(cfg_custom, dict):
+            custom_prompts = cfg_custom
+
+    chosen_prompt = None
+    if custom_prompts:
+        # Check tags
+        if conversation.tags:
+            try:
+                tags_list = json_module.loads(conversation.tags) if isinstance(conversation.tags, str) else conversation.tags
+                for tag in tags_list:
+                    if tag in custom_prompts:
+                        chosen_prompt = custom_prompts[tag]
+                        break
+            except Exception:
+                pass
+        
+        # Check category
+        if not chosen_prompt and conversation.category and conversation.category in custom_prompts:
+            chosen_prompt = custom_prompts[conversation.category]
+            
+        # Check default fallback in custom
+        if not chosen_prompt and "default" in custom_prompts:
+            chosen_prompt = custom_prompts["default"]
+
+    # Run the summarization
+    result = await engine.summarize(
+        transcript, 
+        category=conversation.category or 'default', 
+        custom_prompt=chosen_prompt,
+        custom_prompts=custom_prompts
+    )
+    
+    if result.get('success'):
+        conversation.summary = result['summary_markdown']
+        if result.get('action_items'):
+            conversation.action_items = json_module.dumps(result['action_items'], ensure_ascii=False)
+        conversation.updated_at = utc_now()
+        db.commit()
+        return {
+            "message": "Summary generated successfully",
+            "summary": result['summary_markdown'],
+            "action_items": result.get('action_items', []),
+            "model": result.get('model')
+        }
+    else:
+        raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
+
+
+@router.get("/prompts/all")
+async def get_prompts():
+    """Get default and custom prompts"""
+    from .summarization import DEFAULT_PROMPTS
+    import json as json_module
+    config = get_config()
+    settings = config.get_settings()
+    custom_prompts = None
+    cfg_custom = getattr(settings, 'custom_prompts', None)
+    if cfg_custom:
+        if isinstance(cfg_custom, str):
+            try:
+                custom_prompts = json_module.loads(cfg_custom)
+            except Exception:
+                pass
+        elif isinstance(cfg_custom, dict):
+            custom_prompts = cfg_custom
+            
+    return {
+        "default_prompts": DEFAULT_PROMPTS,
+        "custom_prompts": custom_prompts or {}
     }
 
 
@@ -731,6 +900,9 @@ async def identify_speaker_in_segment(
     merge_suffix, _ = await asyncio.to_thread(_retroactive_updates)
     merge_msg += merge_suffix
 
+    from .services import export_conversation_to_directory
+    export_conversation_to_directory(conversation_id, db)
+
     return {
         "message": f"Speaker identified as {speaker.name}{merge_msg}. Updated {updated_count + 1} segment(s) total.",
         "speaker_id": speaker.id,
@@ -758,6 +930,10 @@ async def update_segment_text(
     segment.text = request.text
     db.commit()
     db.refresh(segment)
+
+    # Auto-export updated markdown
+    from .services import export_conversation_to_directory
+    export_conversation_to_directory(conversation_id, db)
 
     return {"message": "Segment text updated successfully", "text": segment.text}
 
@@ -1435,10 +1611,10 @@ def format_seconds_to_vtt_timestamp(seconds: float) -> str:
 @router.get("/{conversation_id}/export")
 async def export_conversation_transcript(
     conversation_id: int,
-    format: str = Query("txt", enum=["txt", "srt", "vtt", "json"]),
+    format: str = Query("txt", enum=["txt", "srt", "vtt", "json", "markdown"]),
     db: Session = Depends(get_db)
 ):
-    """Export conversation transcript in TXT, SRT, VTT, or JSON format"""
+    """Export conversation transcript in TXT, SRT, VTT, JSON, or Markdown format"""
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -1514,5 +1690,45 @@ async def export_conversation_transcript(
             content=content,
             media_type="text/vtt",
             headers={"Content-Disposition": f"attachment; filename={safe_title}.vtt"}
+        )
+
+    elif format == "markdown":
+        import json as json_module
+        participants = list(set(s.speaker_name for s in segments if s.speaker_name))
+        tags_list = json_module.loads(conversation.tags) if conversation.tags else []
+        
+        md = '---\n'
+        md += f'title: "{conversation.title or "transcript_" + str(conversation_id)}"\n'
+        md += f'date: {conversation.start_time.strftime("%Y-%m-%d") if conversation.start_time else "unknown"}\n'
+        md += f'category: {conversation.category or "outro"}\n'
+        if participants:
+            md += f'participants: {json_module.dumps(participants, ensure_ascii=False)}\n'
+        if tags_list:
+            md += f'tags: {json_module.dumps(tags_list, ensure_ascii=False)}\n'
+        if conversation.duration:
+            mins = int(conversation.duration // 60)
+            md += f'duration: "{mins} min"\n'
+        md += '---\n\n'
+        
+        # Add summary markdown directly (which contains Resumo, Ações, Notas, etc.)
+        if conversation.summary:
+            md += conversation.summary.strip() + "\n\n"
+        
+        # Add transcript grouped by speaker
+        md += '## Transcrição\n\n'
+        current_speaker = None
+        for s in segments:
+            speaker = s.speaker_name or 'Unknown'
+            time_str = format_seconds_to_timestamp(s.start_offset)
+            if speaker != current_speaker:
+                md += f'\n**{speaker}** ({time_str})\n'
+                current_speaker = speaker
+            md += f'> {s.text or ""}\n'
+            
+        from fastapi.responses import Response
+        return Response(
+            content=md,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename={safe_title}.md"}
         )
 

@@ -20,12 +20,28 @@ export default {
                                 <i data-lucide="message-square" style="color: var(--primary);"></i>
                                 <input type="text" id="conversation-title-input" class="form-control" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 600; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 12px; width: 100%; transition: all 0.2s ease;" title="Click to edit title" onfocus="this.style.background='var(--card-bg)'; this.style.borderStyle='solid'; this.style.borderColor='var(--primary)';" onblur="this.style.background='rgba(255,255,255,0.02)'; this.style.borderStyle='dashed'; this.style.borderColor='rgba(255,255,255,0.15)';" onmouseover="this.style.borderColor='rgba(255,255,255,0.35)'" onmouseout="if(document.activeElement!==this)this.style.borderColor='rgba(255,255,255,0.15)'" />
                             </div>
-                            <div style="display: flex; gap: 10px;">
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                                <select id="conversation-category" class="form-control" style="width: 140px; height: 38px; font-size: 0.85rem; background-color: #16182c !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.15) !important;" title="Select category">
+                                    <option value="">No Category</option>
+                                    <option value="reuniao">Reunião</option>
+                                    <option value="aula">Aula</option>
+                                    <option value="encontro">Encontro</option>
+                                    <option value="entrevista">Entrevista</option>
+                                    <option value="podcast">Podcast</option>
+                                    <option value="video">Vídeo</option>
+                                    <option value="outro">Outro</option>
+                                </select>
                                 <button class="btn btn-secondary" id="btn-recalc-emotions" title="Re-evaluate emotions with personalized profiles">
                                     <i data-lucide="smile"></i> Recalculate Emotions
                                 </button>
                                 <button class="btn btn-secondary" id="btn-rematch-speakers" title="Instantly match all Unknown voices in this conversation against your trained voice profiles (Fast, no audio re-processing)">
                                     <i data-lucide="user-check"></i> Rematch Speakers
+                                </button>
+                                <button class="btn btn-secondary" id="btn-summarize" title="Generate AI summary of the meeting/lesson using local Ollama">
+                                    <i data-lucide="sparkles"></i> Generate Summary
+                                </button>
+                                <button class="btn btn-secondary" id="btn-export-md" title="Export to Markdown format">
+                                    <i data-lucide="file-text"></i> Export Markdown
                                 </button>
                                 <button class="btn btn-secondary" id="btn-reprocess" title="Run full diarization & whisper pipeline again">
                                     <i data-lucide="refresh-cw"></i> Reprocess Audio
@@ -34,8 +50,21 @@ export default {
                         </div>
                     </div>
 
+                    <!-- AI Summary Card -->
+                    <div class="content-card summary-card" id="detail-summary-card" style="display: none; margin-top: 16px; padding: 20px;">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                            <h2 style="margin: 0; display: flex; align-items: center; gap: 8px; font-family: var(--font-heading); font-size: 1.1rem; color: var(--primary);">
+                                <i data-lucide="sparkles"></i> AI-Generated Summary & Action Items
+                            </h2>
+                            <button class="btn btn-secondary btn-icon-only" id="btn-toggle-summary" title="Collapse/Expand Summary" style="padding: 2px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;">
+                                <i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>
+                            </button>
+                        </div>
+                        <div class="summary-content" id="detail-summary-content" style="max-height: 400px; overflow-y: auto; padding-right: 8px; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;"></div>
+                    </div>
+
                     <!-- Transcript Card -->
-                    <div class="content-card" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-bottom: 0; padding-bottom: 12px;">
+                    <div class="content-card" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 16px; margin-bottom: 0; padding-bottom: 12px;">
                         <div class="card-header" style="margin-bottom: 12px;">
                             <h2>Transcript & Segments</h2>
                             <span class="badge badge-info" id="detail-num-speakers">0 Speakers</span>
@@ -211,6 +240,24 @@ export default {
             titleInput.value = this.conversation.title || `Recording #${this.conversation.id}`;
         }
 
+        // Category select
+        const categorySelect = document.getElementById('conversation-category');
+        if (categorySelect) {
+            categorySelect.value = this.conversation.category || '';
+        }
+
+        // Summary card
+        const summaryCard = document.getElementById('detail-summary-card');
+        const summaryContent = document.getElementById('detail-summary-content');
+        if (summaryCard && summaryContent) {
+            if (this.conversation.summary) {
+                summaryCard.style.display = 'block';
+                summaryContent.innerHTML = this.renderMarkdown(this.conversation.summary);
+            } else {
+                summaryCard.style.display = 'none';
+            }
+        }
+
         // Speaker count tag
         const speakersBadge = document.getElementById('detail-num-speakers');
         if (speakersBadge) {
@@ -241,6 +288,31 @@ export default {
         if (format) {
             format.textContent = this.conversation.audio_format || 'wav';
         }
+    },
+
+    renderMarkdown(text) {
+        if (!text) return '';
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+            
+        // Headers
+        html = html.replace(/^### (.*$)/gim, '<h4 style="color: var(--primary); margin-top: 12px; margin-bottom: 6px; font-family: var(--font-heading);">$1</h4>');
+        html = html.replace(/^## (.*$)/gim, '<h3 style="color: var(--primary); margin-top: 16px; margin-bottom: 8px; font-family: var(--font-heading);">$1</h3>');
+        html = html.replace(/^# (.*$)/gim, '<h2 style="color: var(--primary); margin-top: 20px; margin-bottom: 10px; font-family: var(--font-heading);">$1</h2>');
+        
+        // Bold
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Checklist/Task list
+        html = html.replace(/^- \[ \] (.*$)/gim, '<li style="list-style: none; margin-left: 0; padding-left: 0;"><label class="checkbox-control" style="display: inline-flex; pointer-events: none; margin-bottom: 4px;"><input type="checkbox" /> <span style="margin-left: 8px;">$1</span></label></li>');
+        html = html.replace(/^- \[x\] (.*$)/gim, '<li style="list-style: none; margin-left: 0; padding-left: 0;"><label class="checkbox-control" style="display: inline-flex; pointer-events: none; margin-bottom: 4px;"><input type="checkbox" checked /> <span style="margin-left: 8px;">$1</span></label></li>');
+        
+        // Bullet lists
+        html = html.replace(/^- (.*$)/gim, '<li style="margin-left: 20px; margin-bottom: 4px;">$1</li>');
+        
+        return html;
     },
 
     renderSegments() {
@@ -277,95 +349,139 @@ export default {
         // Inject the datalist for speaker autocompletion
         const datalistHtml = `<datalist id="speakers-datalist">${this.speakers.map(sp => `<option value="${sp.name}"></option>`).join('')}</datalist>`;
 
-        list.innerHTML = datalistHtml + segments.map(seg => {
-            const isUnknown = !seg.speaker_id || (seg.speaker_name && seg.speaker_name.startsWith('Unknown_'));
-            
-            // Emotion classes
-            const emotionClass = seg.emotion_category === 'neutral' ? 'neutral' : 
-                                 (seg.emotion_category === 'angry' ? 'angry' : 
-                                  (seg.emotion_category === 'sad' ? 'sad' : ''));
-            const correctedClass = seg.emotion_corrected ? 'corrected' : '';
+        // Group consecutive segments by speaker
+        const groups = [];
+        let currentGroup = null;
 
-            // Emotion select options
-            const emotions = ['neutral', 'angry', 'happy', 'sad', 'surprised', 'disgusted', 'fearful', 'other', 'unknown'];
-            const emotionOptionsHtml = emotions.map(emo => `
-                <option value="${emo}" ${seg.emotion_category === emo ? 'selected' : ''}>${emo.toUpperCase()}</option>
-            `).join('');
+        for (const seg of segments) {
+            const speakerKey = seg.speaker_name || 'Unknown';
+            if (!currentGroup || currentGroup.speaker !== speakerKey) {
+                currentGroup = {
+                    speaker: speakerKey,
+                    speaker_id: seg.speaker_id,
+                    segments: [],
+                    first_segment_id: seg.id
+                };
+                groups.push(currentGroup);
+            }
+            currentGroup.segments.push(seg);
+        }
 
+        // Helper to hash speaker name to a deterministic color
+        const hashCode = (str) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash |= 0;
+            }
+            return hash;
+        };
+        const speakerColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+        let groupsHtml = groups.map(group => {
+            const speakerColor = speakerColors[Math.abs(hashCode(group.speaker)) % speakerColors.length];
+            const isUnknown = group.speaker.startsWith('Unknown_') || group.speaker === 'Unknown';
             const bgStyle = isUnknown 
                 ? 'background-color: rgba(255, 255, 255, 0.04); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);' 
-                : 'background-color: rgba(99, 102, 241, 0.05); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.25);';
+                : `background-color: rgba(99, 102, 241, 0.05); color: ${speakerColor}; border: 1px solid ${speakerColor}40;`;
+
+            const segmentsHtml = group.segments.map(seg => {
+                const emotionClass = seg.emotion_category === 'neutral' ? 'neutral' : 
+                                     (seg.emotion_category === 'angry' ? 'angry' : 
+                                      (seg.emotion_category === 'sad' ? 'sad' : ''));
+                const correctedClass = seg.emotion_corrected ? 'corrected' : '';
+
+                const emotions = ['neutral', 'angry', 'happy', 'sad', 'surprised', 'disgusted', 'fearful', 'other', 'unknown'];
+                const emotionOptionsHtml = emotions.map(emo => `
+                    <option value="${emo}" ${seg.emotion_category === emo ? 'selected' : ''}>${emo.toUpperCase()}</option>
+                `).join('');
+
+                return `
+                    <div class="segment-card ${seg.is_misidentified ? 'misidentified' : ''}" id="seg-card-${seg.id}" data-id="${seg.id}" style="border-left: 3px solid ${speakerColor} !important; margin-bottom: 2px;">
+                        <div class="segment-header">
+                            <div class="segment-meta" style="flex-wrap: wrap; gap: 10px;">
+                                <span class="segment-time">${this.formatDuration(seg.start_offset)} - ${this.formatDuration(seg.end_offset)}</span>
+                                
+                                <!-- Emotion Selection Dropdown -->
+                                <div>
+                                    <select class="emotion-badge-select ${emotionClass} ${correctedClass}" data-id="${seg.id}" title="Correct segment emotion">
+                                        ${emotionOptionsHtml}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Segment Actions -->
+                            <div class="segment-actions">
+                                <button class="btn btn-icon-only btn-play-segment" data-id="${seg.id}" title="Play audio clip">
+                                    <i data-lucide="play" style="width: 14px; height: 14px;"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Transcript Content -->
+                        <div class="segment-text editable-transcript-text" id="seg-text-${seg.id}" contenteditable="true" title="Click to edit transcript text" style="outline: none; border-radius: 4px; padding: 4px 8px; margin: 4px -8px; transition: all 0.2s; min-height: 24px;" data-id="${seg.id}">${seg.text || ''}</div>
+
+                        <!-- Custom timeline progress (only visible while playing) -->
+                        <div class="mini-player" id="mini-player-${seg.id}" style="display: none; margin-top: 8px;">
+                            <button class="mini-player-btn btn-pause-segment" data-id="${seg.id}">
+                                <i data-lucide="pause" style="width: 12px; height: 12px;"></i>
+                            </button>
+                            <div class="mini-player-timeline" data-id="${seg.id}">
+                                <div class="mini-player-progress" id="progress-bar-${seg.id}"></div>
+                            </div>
+                            <span class="mini-player-time" id="progress-time-${seg.id}">0:00</span>
+                        </div>
+
+                        <!-- Toggles & Flag Indicators (collapsible settings row) -->
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                            <label class="checkbox-control">
+                                <input type="checkbox" class="cb-misidentified" data-id="${seg.id}" ${seg.is_misidentified ? 'checked' : ''} />
+                                <span>Wrong Speaker Profile</span>
+                            </label>
+                            ${seg.emotion_corrected ? `
+                                <label class="checkbox-control">
+                                    <input type="checkbox" class="cb-emotion-misidentified" data-id="${seg.id}" ${seg.emotion_misidentified ? 'checked' : ''} />
+                                    <span>Wrong Emotion Learn</span>
+                                </label>
+                            ` : ''}
+                            
+                            <!-- Confidence Level -->
+                            ${seg.confidence ? `
+                                <span style="margin-left: auto;">Voice Conf: ${(seg.confidence * 100).toFixed(0)}%</span>
+                            ` : ''}
+                            
+                            ${seg.emotion_confidence ? `
+                                <span style="${seg.confidence ? '' : 'margin-left: auto;'}">Emotion Conf: ${(seg.emotion_confidence * 100).toFixed(0)}%</span>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
 
             return `
-                <div class="segment-card ${seg.is_misidentified ? 'misidentified' : ''}" id="seg-card-${seg.id}" data-id="${seg.id}">
-                    <div class="segment-header">
-                        <div class="segment-meta" style="flex-wrap: wrap; gap: 10px;">
-                            <span class="segment-time">${this.formatDuration(seg.start_offset)} - ${this.formatDuration(seg.end_offset)}</span>
+                <div class="speaker-group" data-speaker="${group.speaker}" style="margin-bottom: 12px; background: rgba(255,255,255,0.01); border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.03);">
+                    <div class="speaker-group-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="speaker-group-name" style="border-left: 3px solid ${speakerColor}; padding-left: 8px; font-weight: 600; font-size: 0.9rem; color: ${isUnknown ? 'var(--text-muted)' : speakerColor};">${group.speaker}</span>
                             
                             <!-- Speaker Inline Input with Autocomplete Datalist -->
-                            <div style="display: inline-flex; align-items: center; gap: 4px;">
-                                <input type="text" class="form-control speaker-inline-input" data-id="${seg.id}" data-current-name="${seg.speaker_name || ''}" list="speakers-datalist" value="${seg.speaker_name || ''}" style="width: 140px; height: 26px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; ${bgStyle}" placeholder="Type name..." />
-                                <button class="btn btn-secondary btn-icon-only btn-rename-inline" data-id="${seg.id}" title="Save speaker identity" style="padding: 2px; width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;">
+                            <div style="display: inline-flex; align-items: center; gap: 4px; margin-left: 12px;">
+                                <input type="text" class="form-control speaker-inline-input" data-id="${group.first_segment_id}" data-current-name="${group.speaker}" list="speakers-datalist" value="${isUnknown ? '' : group.speaker}" style="width: 140px; height: 26px; padding: 2px 8px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; ${bgStyle}" placeholder="Rename speaker..." />
+                                <button class="btn btn-secondary btn-icon-only btn-rename-inline" data-id="${group.first_segment_id}" title="Save speaker identity" style="padding: 2px; width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;">
                                     <i data-lucide="check" style="width: 12px; height: 12px; color: var(--accent);"></i>
                                 </button>
                             </div>
-
-
-                            <!-- Emotion Selection Dropdown -->
-                            <div>
-                                <select class="emotion-badge-select ${emotionClass} ${correctedClass}" data-id="${seg.id}" title="Correct segment emotion">
-                                    ${emotionOptionsHtml}
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Segment Actions -->
-                        <div class="segment-actions">
-                            <button class="btn btn-icon-only btn-play-segment" data-id="${seg.id}" title="Play audio clip">
-                                <i data-lucide="play" style="width: 14px; height: 14px;"></i>
-                            </button>
                         </div>
                     </div>
-
-                    <!-- Transcript Content -->
-                    <div class="segment-text editable-transcript-text" id="seg-text-${seg.id}" contenteditable="true" title="Click to edit transcript text" style="outline: none; border-radius: 4px; padding: 4px 8px; margin: 4px -8px; transition: all 0.2s; min-height: 24px;" data-id="${seg.id}">${seg.text || ''}</div>
-
-                    <!-- Custom timeline progress (only visible while playing) -->
-                    <div class="mini-player" id="mini-player-${seg.id}" style="display: none; margin-top: 8px;">
-                        <button class="mini-player-btn btn-pause-segment" data-id="${seg.id}">
-                            <i data-lucide="pause" style="width: 12px; height: 12px;"></i>
-                        </button>
-                        <div class="mini-player-timeline" data-id="${seg.id}">
-                            <div class="mini-player-progress" id="progress-bar-${seg.id}"></div>
-                        </div>
-                        <span class="mini-player-time" id="progress-time-${seg.id}">0:00</span>
-                    </div>
-
-                    <!-- Toggles & Flag Indicators (collapsible settings row) -->
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
-                        <label class="checkbox-control">
-                            <input type="checkbox" class="cb-misidentified" data-id="${seg.id}" ${seg.is_misidentified ? 'checked' : ''} />
-                            <span>Wrong Speaker Profile</span>
-                        </label>
-                        ${seg.emotion_corrected ? `
-                            <label class="checkbox-control">
-                                <input type="checkbox" class="cb-emotion-misidentified" data-id="${seg.id}" ${seg.emotion_misidentified ? 'checked' : ''} />
-                                <span>Wrong Emotion Learn</span>
-                            </label>
-                        ` : ''}
-                        
-                        <!-- Confidence Level -->
-                        ${seg.confidence ? `
-                            <span style="margin-left: auto;">Voice Conf: ${(seg.confidence * 100).toFixed(0)}%</span>
-                        ` : ''}
-                        
-                        ${seg.emotion_confidence ? `
-                            <span style="${seg.confidence ? '' : 'margin-left: auto;'}">Emotion Conf: ${(seg.emotion_confidence * 100).toFixed(0)}%</span>
-                        ` : ''}
+                    <div class="speaker-group-segments">
+                        ${segmentsHtml}
                     </div>
                 </div>
             `;
         }).join('');
+
+        list.innerHTML = datalistHtml + groupsHtml;
 
         lucide.createIcons();
         this.setupSegmentInteractions();
@@ -458,6 +574,70 @@ export default {
                 } finally {
                     btnRecalc.disabled = false;
                 }
+            });
+        }
+
+        // Category select change
+        const categorySelect = document.getElementById('conversation-category');
+        if (categorySelect) {
+            categorySelect.addEventListener('change', async (e) => {
+                const category = e.target.value;
+                try {
+                    await api.updateConversationCategory(this.conversationId, category);
+                    window.showToast('Category updated successfully.', 'success');
+                    this.conversation.category = category;
+                } catch (err) {
+                    window.showToast(`Failed to update category: ${err.message}`, 'danger');
+                }
+            });
+        }
+
+        // Generate Summary
+        const btnSummarize = document.getElementById('btn-summarize');
+        if (btnSummarize) {
+            btnSummarize.addEventListener('click', async () => {
+                try {
+                    btnSummarize.disabled = true;
+                    btnSummarize.innerHTML = '<i data-lucide="loader-2" class="spinner-icon animate-spin" style="width: 14px; height: 14px; margin-right: 6px; display: inline-block; vertical-align: middle;"></i> Summarizing...';
+                    lucide.createIcons();
+                    window.showToast('Generating AI summary via Ollama. This may take a minute...', 'warning');
+                    
+                    const res = await api.summarizeConversation(this.conversationId);
+                    window.showToast(res.message, 'success');
+                    await this.loadData();
+                } catch (err) {
+                    window.showToast(`Summarization failed: ${err.message}`, 'danger');
+                } finally {
+                    btnSummarize.disabled = false;
+                    btnSummarize.innerHTML = '<i data-lucide="sparkles"></i> Generate Summary';
+                    lucide.createIcons();
+                }
+            });
+        }
+
+        // Export Markdown
+        const btnExportMd = document.getElementById('btn-export-md');
+        if (btnExportMd) {
+            btnExportMd.addEventListener('click', () => {
+                const url = api.getExportTranscriptUrl(this.conversationId, 'markdown');
+                window.open(url, '_blank');
+            });
+        }
+
+        // Toggle Summary Card collapse
+        const btnToggleSummary = document.getElementById('btn-toggle-summary');
+        const summaryContent = document.getElementById('detail-summary-content');
+        if (btnToggleSummary && summaryContent) {
+            btnToggleSummary.addEventListener('click', () => {
+                const isCollapsed = summaryContent.style.display === 'none';
+                if (isCollapsed) {
+                    summaryContent.style.display = 'block';
+                    btnToggleSummary.innerHTML = '<i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>';
+                } else {
+                    summaryContent.style.display = 'none';
+                    btnToggleSummary.innerHTML = '<i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>';
+                }
+                lucide.createIcons();
             });
         }
 

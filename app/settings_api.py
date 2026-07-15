@@ -22,6 +22,12 @@ class SettingsUpdateRequest(BaseModel):
     enable_personalized_emotions: Optional[bool] = None
     offline_mode: Optional[bool] = None
     cleanup_vram_threshold_gb: Optional[int] = None
+    ollama_url: Optional[str] = None
+    ollama_model: Optional[str] = None
+    custom_prompts: Optional[str] = None
+    watch_directory: Optional[str] = None
+    export_directory: Optional[str] = None
+    auto_summarize: Optional[bool] = None
 
 
 

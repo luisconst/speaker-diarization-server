@@ -241,6 +241,41 @@ window.addEventListener('load', () => {
         });
     }
 
+    // Initialize user filter from localStorage
+    window.currentUser = localStorage.getItem('filter_user') || '';
+    const userSelect = document.getElementById('user-filter-select');
+    if (userSelect) {
+        userSelect.value = window.currentUser;
+        userSelect.addEventListener('change', (e) => {
+            window.currentUser = e.target.value;
+            localStorage.setItem('filter_user', window.currentUser);
+            routerCoordinator(); // Reload current view to apply filter
+        });
+    }
+
+    // Populate user filter list
+    async function loadUserFilterList() {
+        try {
+            const res = await api.getUsers();
+            if (res && res.users && userSelect) {
+                // Keep selected user
+                const selected = userSelect.value;
+                userSelect.innerHTML = '<option value="">All Users</option>';
+                res.users.forEach(user => {
+                    const opt = document.createElement('option');
+                    opt.value = user;
+                    opt.textContent = user;
+                    userSelect.appendChild(opt);
+                });
+                userSelect.value = selected;
+            }
+        } catch (err) {
+            console.error('Failed to load users for filter:', err);
+        }
+    }
+
+    loadUserFilterList();
+
     // Trigger initial route
     routerCoordinator();
     

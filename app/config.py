@@ -28,6 +28,11 @@ _ENV_OVERRIDES: Tuple[Tuple[str, str, Callable[[str], Any]], ...] = (
     ("enable_personalized_emotions", "ENABLE_PERSONALIZED_EMOTIONS", _as_bool),
     ("offline_mode", "OFFLINE_MODE", _as_bool),
     ("cleanup_vram_threshold_gb", "CLEANUP_VRAM_THRESHOLD_GB", int),
+    ("ollama_url", "OLLAMA_URL", str),
+    ("ollama_model", "OLLAMA_MODEL", str),
+    ("watch_directory", "WATCH_DIRECTORY", str),
+    ("export_directory", "EXPORT_DIRECTORY", str),
+    ("auto_summarize", "AUTO_SUMMARIZE", _as_bool),
 )
 
 
@@ -43,6 +48,14 @@ class VoiceSettings(BaseModel):
     enable_personalized_emotions: bool = Field(default=True, description="Enable personalized emotion matching")
     offline_mode: bool = Field(default=False, description="Run in offline mode using cache only")
     cleanup_vram_threshold_gb: int = Field(default=12, ge=2, le=64, description="VRAM threshold for cleanup (GB)")
+    # LLM / Summarization
+    ollama_url: str = Field(default="http://localhost:11434", description="Ollama API URL")
+    ollama_model: str = Field(default="llama3", description="Ollama model name for summarization")
+    custom_prompts: Optional[str] = Field(default=None, description="JSON string of custom prompts per category")
+    # Directory watcher
+    watch_directory: str = Field(default="", description="Directory to watch for new audio files")
+    export_directory: str = Field(default="", description="Directory to export markdown files")
+    auto_summarize: bool = Field(default=False, description="Automatically summarize new conversations")
 
 
 

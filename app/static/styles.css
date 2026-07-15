@@ -1199,3 +1199,79 @@ select:focus, select.form-control:focus {
     color: #ffffff;
 }
 
+/* Speaker Group Styles */
+.speaker-group {
+    margin-bottom: 12px;
+}
+
+.speaker-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px 8px 0 0;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    backdrop-filter: blur(8px);
+}
+
+.speaker-group-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding-left: 10px;
+}
+
+.speaker-group-segments .segment-card {
+    border-left-width: 3px;
+    border-left-style: solid;
+    margin-left: 0;
+    border-radius: 0;
+    margin-bottom: 2px;
+}
+
+.speaker-group-segments .segment-card:last-child {
+    border-radius: 0 0 8px 8px;
+    margin-bottom: 0;
+}
+
+/* Summary card */
+.summary-card {
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.summary-card h3 {
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: var(--primary);
+}
+
+.summary-content {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-main);
+    white-space: pre-wrap;
+}
+
+.summary-content h2, .summary-content h3, .summary-content h4 {
+    color: var(--primary);
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-family: var(--font-heading);
+}
+
+.summary-content ul {
+    padding-left: 20px;
+}
+
+.summary-content li {
+    margin-bottom: 4px;
+}
+
+

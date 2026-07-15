@@ -390,6 +390,10 @@ async def process_audio(
         # Clear GPU cache after processing
         engine.clear_gpu_cache()
 
+        # Auto-summarize and export markdown
+        from .services import auto_summarize_and_export
+        await auto_summarize_and_export(conversation.id, db)
+
         # Return conversation
         return conversation
 

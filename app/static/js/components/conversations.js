@@ -9,6 +9,7 @@ export default {
     startDateFilter: '',
     endDateFilter: '',
     userFilter: '',
+    categoryFilter: '',
     sortBy: 'start_time',
     sortOrder: 'desc',
 
@@ -56,6 +57,18 @@ export default {
                             <input type="date" id="filter-end-date" class="form-control" style="width: 135px; height: 34px; padding: 4px 8px; font-size: 0.85rem;" />
                         </div>
                         
+                        <!-- Category Filter -->
+                        <select class="form-control" id="category-filter" style="width: 140px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
+                            <option value="">All Categories</option>
+                            <option value="reuniao">Reunião</option>
+                            <option value="aula">Aula</option>
+                            <option value="encontro">Encontro</option>
+                            <option value="entrevista">Entrevista</option>
+                            <option value="podcast">Podcast</option>
+                            <option value="video">Vídeo</option>
+                            <option value="outro">Outro</option>
+                        </select>
+                        
                         <!-- Speaker Filter -->
                         <select class="form-control" id="speaker-filter" style="width: 140px; height: 34px; padding: 4px 8px; font-size: 0.85rem;">
                             <option value="">All Speakers</option>
@@ -80,6 +93,7 @@ export default {
                         <thead>
                             <tr>
                                 <th id="th-title" data-label="Recording Title" style="cursor: pointer; user-select: none;">Recording Title <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
+                                <th id="th-category" data-label="Category" style="cursor: pointer; user-select: none;">Category <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
                                 <th id="th-date" data-label="Processed Date" style="cursor: pointer; user-select: none;">Processed Date <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
                                 <th id="th-duration" data-label="Duration" style="cursor: pointer; user-select: none;">Duration <span style="opacity: 0.3; font-size: 0.8rem;">↕</span></th>
                                 <th>Speakers</th>
@@ -90,7 +104,7 @@ export default {
                         </thead>
                         <tbody id="conversations-list">
                             <tr>
-                                <td colspan="7" style="text-align: center; color: var(--text-muted);">
+                                <td colspan="8" style="text-align: center; color: var(--text-muted);">
                                     <div class="loading-spinner-container" style="height: 100px;">
                                         <div class="spinner"></div>
                                     </div>
@@ -290,6 +304,15 @@ export default {
             });
         }
 
+        const categoryFilter = document.getElementById('category-filter');
+        if (categoryFilter) {
+            categoryFilter.addEventListener('change', async (e) => {
+                this.categoryFilter = e.target.value;
+                this.skip = 0;
+                await this.loadConversations();
+            });
+        }
+
         if (startDateFilter) {
             startDateFilter.addEventListener('change', async (e) => {
                 this.startDateFilter = e.target.value;
@@ -317,6 +340,7 @@ export default {
 
         const sortHeaders = [
             { id: 'th-title', column: 'title' },
+            { id: 'th-category', column: 'category' },
             { id: 'th-date', column: 'start_time' },
             { id: 'th-duration', column: 'duration' },
             { id: 'th-user', column: 'uploaded_by' }
@@ -374,7 +398,8 @@ export default {
                 this.endDateFilter || null,
                 this.userFilter || null,
                 this.sortBy,
-                this.sortOrder
+                this.sortOrder,
+                this.categoryFilter || null
             );
 
             this.total = data.total;
@@ -382,7 +407,7 @@ export default {
             if (data.conversations.length === 0) {
                 list.innerHTML = `
                     <tr>
-                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
                             No conversations found.
                         </td>
                     </tr>
@@ -394,6 +419,16 @@ export default {
                 if (btnNext) btnNext.disabled = true;
                 return;
             }
+
+            const categoryMap = {
+                'reuniao': { name: 'Reunião', icon: 'briefcase', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.1)' },
+                'aula': { name: 'Aula', icon: 'graduation-cap', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' },
+                'encontro': { name: 'Encontro', icon: 'users', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.1)' },
+                'entrevista': { name: 'Entrevista', icon: 'mic', color: '#fb7185', bg: 'rgba(251, 113, 133, 0.1)' },
+                'podcast': { name: 'Podcast', icon: 'headphones', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.1)' },
+                'video': { name: 'Vídeo', icon: 'video', color: '#f472b6', bg: 'rgba(244, 114, 182, 0.1)' },
+                'outro': { name: 'Outro', icon: 'file-text', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.1)' }
+            };
 
             list.innerHTML = data.conversations.map(conv => {
                 const statusClass = conv.status === 'completed' ? 'badge-success' : 
@@ -410,11 +445,20 @@ export default {
                     </span>`;
                 }
 
+                const cat = categoryMap[conv.category] || categoryMap['outro'];
+                const categoryHtml = conv.category ? `
+                    <span class="badge" style="background: ${cat.bg}; color: ${cat.color}; border: 1px solid ${cat.color}30; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px;">
+                        <i data-lucide="${cat.icon}" style="width: 11px; height: 11px;"></i>
+                        ${cat.name}
+                    </span>
+                ` : `<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>`;
+
                 return `
                     <tr class="interactive-row" data-id="${conv.id}">
                         <td style="font-weight: 550; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             ${title}
                         </td>
+                        <td>${categoryHtml}</td>
                         <td style="color: var(--text-muted);">${dateStr}</td>
                         <td>${durationStr}</td>
                         <td><span class="badge badge-info">${conv.num_speakers}</span></td>
@@ -428,6 +472,7 @@ export default {
                                 <option value="txt">TXT (Text)</option>
                                 <option value="srt">SRT (Subs)</option>
                                 <option value="vtt">VTT (Webvtt)</option>
+                                <option value="markdown">Markdown</option>
                                 <option value="json">JSON</option>
                             </select>
                             <button class="btn btn-icon-only btn-delete-conv" data-id="${conv.id}" title="Delete Conversation" style="padding: 6px; vertical-align: middle;">

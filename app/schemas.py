@@ -101,6 +101,35 @@ class ConversationListItem(BaseModel):
     num_segments: Optional[int] = 0
     num_speakers: Optional[int] = 0
     uploaded_by: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    summary: Optional[str] = None
+    action_items: Optional[List[str]] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator('tags', mode='before')
+    @classmethod
+    def parse_tags(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return v
+
+    @field_validator('action_items', mode='before')
+    @classmethod
+    def parse_action_items(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return v
 
     class Config:
         from_attributes = True
@@ -126,7 +155,36 @@ class ConversationResponse(BaseModel):
     num_segments: Optional[int] = 0
     num_speakers: Optional[int] = 0
     uploaded_by: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    summary: Optional[str] = None
+    action_items: Optional[List[str]] = None
+    updated_at: Optional[datetime] = None
     transcript_segments: List[ConversationSegmentResponse] = []
+
+    @field_validator('tags', mode='before')
+    @classmethod
+    def parse_tags(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return v
+
+    @field_validator('action_items', mode='before')
+    @classmethod
+    def parse_action_items(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return v
 
     class Config:
         from_attributes = True
@@ -135,6 +193,13 @@ class ConversationResponse(BaseModel):
 class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     status: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class ConversationCategoryUpdate(BaseModel):
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 class IdentifySpeakerRequest(BaseModel):

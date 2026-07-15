@@ -117,13 +117,18 @@ class ApiClient {
 
 
     // Conversation Endpoints
-    async getConversations(skip = 0, limit = 100, status = null, speakerId = null, startDate = null, endDate = null, uploadedBy = null, sortBy = 'start_time', sortOrder = 'desc') {
+    async getConversations(skip = 0, limit = 100, status = null, speakerId = null, startDate = null, endDate = null, uploadedBy = null, sortBy = 'start_time', sortOrder = 'desc', category = null) {
         let query = `/api/v1/conversations?skip=${skip}&limit=${limit}`;
         if (status) query += `&status=${encodeURIComponent(status)}`;
         if (speakerId) query += `&speaker_id=${encodeURIComponent(speakerId)}`;
         if (startDate) query += `&start_date=${encodeURIComponent(startDate)}`;
         if (endDate) query += `&end_date=${encodeURIComponent(endDate)}`;
-        if (uploadedBy) query += `&uploaded_by=${encodeURIComponent(uploadedBy)}`;
+        
+        // Use global user filter if set
+        const activeUser = uploadedBy || window.currentUser;
+        if (activeUser) query += `&uploaded_by=${encodeURIComponent(activeUser)}`;
+        
+        if (category) query += `&category=${encodeURIComponent(category)}`;
         if (sortBy) query += `&sort_by=${encodeURIComponent(sortBy)}`;
         if (sortOrder) query += `&sort_order=${encodeURIComponent(sortOrder)}`;
         return this._request(query);
@@ -294,6 +299,27 @@ class ApiClient {
                 profile_name: profileName,
                 checkpoint_timestamp: checkpointTimestamp
             })
+        });
+    }
+
+    async getCategories() {
+        return this._request('/api/v1/conversations/categories');
+    }
+
+    async getUsers() {
+        return this._request('/api/v1/conversations/users');
+    }
+
+    async updateConversationCategory(id, category) {
+        return this._request(`/api/v1/conversations/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ category })
+        });
+    }
+
+    async summarizeConversation(id) {
+        return this._request(`/api/v1/conversations/${id}/summarize`, {
+            method: 'POST'
         });
     }
 

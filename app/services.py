@@ -330,3 +330,146 @@ def cleanup_orphaned_unknowns(db: Session, engine=None) -> List[str]:
     for speaker in orphans:
         db.delete(speaker)
     return deleted
+
+
+def export_conversation_to_directory(conversation_id: int, db: Session):
+    """
+    Generate markdown for a conversation and save it to settings.export_directory
+    if configured.
+    """
+    from .config import get_config
+    config = get_config()
+    settings = config.get_settings()
+    
+    export_dir = getattr(settings, 'export_directory', '')
+    if not export_dir or not os.path.exists(export_dir):
+        return
+        
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        return
+        
+    import re
+    
+    # Safe title
+    safe_title = re.sub(r'[^\w\s-]', '', conversation.title or f"transcript_{conversation_id}")
+    safe_title = safe_title.strip().replace(' ', '_')
+    if not safe_title:
+        safe_title = f"transcript_{conversation_id}"
+        
+    segments = db.query(ConversationSegment).filter(
+        ConversationSegment.conversation_id == conversation_id
+    ).order_by(ConversationSegment.start_offset.asc()).all()
+    
+    participants = list(set(s.speaker_name for s in segments if s.speaker_name))
+    tags_list = json.loads(conversation.tags) if conversation.tags else []
+    
+    md = '---\n'
+    md += f'title: "{conversation.title or "transcript_" + str(conversation_id)}"\n'
+    md += f'date: {conversation.start_time.strftime("%Y-%m-%d") if conversation.start_time else "unknown"}\n'
+    md += f'category: {conversation.category or "outro"}\n'
+    if participants:
+        md += f'participants: {json.dumps(participants, ensure_ascii=False)}\n'
+    if tags_list:
+        md += f'tags: {json.dumps(tags_list, ensure_ascii=False)}\n'
+    if conversation.duration:
+        mins = int(conversation.duration // 60)
+        md += f'duration: "{mins} min"\n'
+    md += '---\n\n'
+    
+    if conversation.summary:
+        md += conversation.summary.strip() + "\n\n"
+        
+    md += '## Transcrição\n\n'
+    current_speaker = None
+    for s in segments:
+        speaker = s.speaker_name or 'Unknown'
+        h = int(s.start_offset // 3600)
+        m = int((s.start_offset % 3600) // 60)
+        s_val = int(s.start_offset % 60)
+        time_str = f"{h:02d}:{m:02d}:{s_val:02d}"
+        if speaker != current_speaker:
+            md += f'\n**{speaker}** ({time_str})\n'
+            current_speaker = speaker
+        md += f'> {s.text or ""}\n'
+        
+    file_path = os.path.join(export_dir, f"{safe_title}.md")
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        logger.info(f"💾 Automatically exported conversation {conversation_id} to {file_path}")
+    except Exception as e:
+        logger.error(f"❌ Failed to auto-export conversation {conversation_id} to {file_path}: {e}")
+
+
+async def auto_summarize_and_export(conversation_id: int, db: Session):
+    """
+    Check settings: if auto_summarize is True, run Ollama to generate a summary.
+    Then, export the markdown note to the export directory.
+    """
+    from .config import get_config
+    from .summarization import SummarizationEngine
+    import json as json_module
+    
+    config = get_config()
+    settings = config.get_settings()
+    
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        return
+        
+    if getattr(settings, 'auto_summarize', False):
+        segments = db.query(ConversationSegment).filter(
+            ConversationSegment.conversation_id == conversation_id
+        ).order_by(ConversationSegment.start_offset).all()
+        
+        if segments:
+            ollama_url = getattr(settings, 'ollama_url', 'http://localhost:11434')
+            ollama_model = getattr(settings, 'ollama_model', 'llama3')
+            engine = SummarizationEngine(ollama_url=ollama_url, model=ollama_model)
+            
+            if await engine.is_available():
+                transcript = engine.build_transcript_text(segments)
+                
+                # Choose prompt
+                custom_prompts = None
+                cfg_custom = getattr(settings, 'custom_prompts', None)
+                if cfg_custom:
+                    try:
+                        custom_prompts = json_module.loads(cfg_custom) if isinstance(cfg_custom, str) else cfg_custom
+                    except Exception:
+                        pass
+                        
+                chosen_prompt = None
+                if custom_prompts:
+                    if conversation.tags:
+                        try:
+                            tags_list = json_module.loads(conversation.tags) if isinstance(conversation.tags, str) else conversation.tags
+                            for tag in tags_list:
+                                if tag in custom_prompts:
+                                    chosen_prompt = custom_prompts[tag]
+                                    break
+                        except Exception:
+                            pass
+                    if not chosen_prompt and conversation.category and conversation.category in custom_prompts:
+                        chosen_prompt = custom_prompts[conversation.category]
+                    if not chosen_prompt and "default" in custom_prompts:
+                        chosen_prompt = custom_prompts["default"]
+                        
+                result = await engine.summarize(
+                    transcript, 
+                    category=conversation.category or 'default',
+                    custom_prompt=chosen_prompt,
+                    custom_prompts=custom_prompts
+                )
+                if result.get('success'):
+                    conversation.summary = result['summary_markdown']
+                    if result.get('action_items'):
+                        conversation.action_items = json_module.dumps(result['action_items'], ensure_ascii=False)
+                    db.commit()
+                    logger.info(f"✓ Automatically summarized conversation {conversation_id}")
+                    
+    # Always export after processing finishes
+    export_conversation_to_directory(conversation_id, db)
+
+

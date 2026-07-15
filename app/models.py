@@ -107,6 +107,12 @@ class Conversation(Base):
     num_segments = Column(Integer, default=0)
     num_speakers = Column(Integer, default=0)
     uploaded_by = Column(String, nullable=True)
+    category = Column(String, nullable=True)  # reuniao, aula, encontro, entrevista, podcast, video, outro
+    tags = Column(Text, nullable=True)  # JSON array of tags
+    summary = Column(Text, nullable=True)  # AI-generated summary
+    action_items = Column(Text, nullable=True)  # JSON array of action items
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    obsidian_exported = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utc_now)
 
     # Relationships

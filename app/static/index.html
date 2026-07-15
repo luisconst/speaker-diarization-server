@@ -76,6 +76,15 @@
                         <input type="text" id="active-operator-input" class="form-control" style="width: 120px; height: 30px; padding: 2px 8px; font-size: 0.8rem; border-radius: 6px;" placeholder="Anonymous" />
                     </div>
 
+                    <!-- User Filter Select -->
+                    <div class="user-filter-container" style="display: flex; align-items: center; gap: 8px; margin-right: 16px; padding-right: 16px; border-right: 1px solid rgba(255,255,255,0.08);">
+                        <i data-lucide="filter" style="width: 16px; height: 16px; color: var(--accent);"></i>
+                        <span style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">View User:</span>
+                        <select id="user-filter-select" class="form-control" style="width: 140px; height: 30px; padding: 2px 8px; font-size: 0.8rem; border-radius: 6px; background-color: #16182c !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.15) !important;">
+                            <option value="">All Users</option>
+                        </select>
+                    </div>
+
                     <!-- GPU Monitor Widget -->
                     <div class="gpu-monitor" id="gpu-widget" style="flex-shrink: 0;">
                         <div class="gpu-info">

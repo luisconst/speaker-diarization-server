@@ -61,6 +61,12 @@ _MIGRATIONS = (
     ("conversation_segments", "emotion_embedding", "BLOB"),
     ("speakers", "emotion_threshold", "REAL"),
     ("conversations", "uploaded_by", "TEXT"),
+    ("conversations", "category", "TEXT"),
+    ("conversations", "tags", "TEXT"),
+    ("conversations", "summary", "TEXT"),
+    ("conversations", "action_items", "TEXT"),
+    ("conversations", "updated_at", "DATETIME"),
+    ("conversations", "obsidian_exported", "INTEGER DEFAULT 0"),
 )
 
 
