@@ -241,39 +241,6 @@ export default {
         });
     },
 
-    async saveSettings() {
-        const fields = [
-            'speaker_threshold', 'emotion_threshold', 'context_padding',
-            'silence_duration', 'whisper_model', 'whisper_language',
-            'cleanup_vram_threshold_gb'
-        ];
-
-        const checkboxes = ['filter_hallucinations', 'enable_personalized_emotions', 'offline_mode'];
-
-        const payload = {};
-        
-        // Grab values
-        fields.forEach(field => {
-            const el = document.getElementById(field);
-            if (el) {
-                // Parse float/ints if numerical
-                if (field === 'speaker_threshold' || field === 'emotion_threshold' || field === 'context_padding' || field === 'silence_duration') {
-                    payload[field] = parseFloat(el.value);
-                } else if (field === 'cleanup_vram_threshold_gb') {
-                    payload[field] = parseInt(el.value);
-                } else {
-                    payload[field] = el.value;
-                }
-            }
-        });
-
-        checkboxes.forEach(field => {
-            const el = document.getElementById(field);
-            if (el) {
-                payload[field] = el.checked;
-            }
-        });
-
     setupRematchListener() {
         const btnGlobalRematch = document.getElementById('btn-global-rematch');
         if (btnGlobalRematch) {
