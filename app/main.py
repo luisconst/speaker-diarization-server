@@ -192,6 +192,11 @@ async def root():
     return FileResponse("app/static/index.html")
 
 
+@app.post("/api/v1/log-error")
+async def log_frontend_error(payload: dict):
+    logger.error(f"❌ FRONTEND ERROR: {payload.get('message')} at {payload.get('filename')}:{payload.get('lineno')}:{payload.get('colno')}\nStack: {payload.get('stack')}")
+    return {"status": "ok"}
+
 
 if __name__ == "__main__":
     # Start FastAPI server

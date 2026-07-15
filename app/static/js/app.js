@@ -283,3 +283,18 @@ window.addEventListener('load', () => {
     pollSystemStatus();
     AppState.statusPollingInterval = setInterval(pollSystemStatus, 5000);
 });
+
+// Forward client exceptions to uvicorn log
+window.addEventListener('error', (e) => {
+    fetch('/api/v1/log-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            message: e.message,
+            filename: e.filename,
+            lineno: e.lineno,
+            colno: e.colno,
+            stack: e.error ? e.error.stack : null
+        })
+    }).catch(err => console.error('Failed to log error to backend:', err));
+});
