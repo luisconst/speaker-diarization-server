@@ -1202,6 +1202,7 @@ select:focus, select.form-control:focus {
 /* Speaker Group Styles */
 .speaker-group {
     margin-bottom: 12px;
+    flex-shrink: 0;
 }
 
 .speaker-group-header {
