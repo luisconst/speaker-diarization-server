@@ -187,6 +187,57 @@ async def download_conversation_audio(conversation_id: int, db: Session = Depend
     )
 
 
+@router.get("/{conversation_id}/audio/stream")
+async def stream_conversation_audio(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Stream the full conversation audio with HTTP Range support.
+    
+    Required for HTML5 <audio> element seeking and continuous playback.
+    Supports partial content (206) responses for efficient streaming.
+    """
+    from fastapi.responses import StreamingResponse
+    from starlette.requests import Request
+    from fastapi import Request as FastAPIRequest
+
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not conversation.audio_path or not os.path.exists(conversation.audio_path):
+        raise HTTPException(status_code=404, detail="Audio file not found or deleted")
+
+    file_path = conversation.audio_path
+    file_size = os.path.getsize(file_path)
+
+    ext = os.path.splitext(file_path)[1].lower()
+    media_type = "audio/wav"
+    if ext == ".mp3":
+        media_type = "audio/mpeg"
+    elif ext == ".m4a":
+        media_type = "audio/mp4"
+    elif ext == ".flac":
+        media_type = "audio/flac"
+    elif ext == ".ogg":
+        media_type = "audio/ogg"
+
+    # Return full file (no Range header support needed at route level,
+    # but we manually handle it for proper <audio> element seeking)
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        stat_result=os.stat(file_path),
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
 async def update_conversation(

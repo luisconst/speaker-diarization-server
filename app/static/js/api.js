@@ -232,6 +232,10 @@ class ApiClient {
         return `/api/v1/conversations/${conversationId}/export?format=${format}`;
     }
 
+    getConversationAudioStreamUrl(conversationId) {
+        return `/api/v1/conversations/${conversationId}/audio/stream`;
+    }
+
 
     // Process Full Audio File
     async processAudioFile(file) {

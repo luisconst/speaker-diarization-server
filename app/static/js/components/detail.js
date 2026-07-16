@@ -507,9 +507,10 @@ export default {
         // Initialize or reuse the audio player for full conversation audio
         if (!this.readingAudioPlayer) {
             this.readingAudioPlayer = new Audio();
+            this.readingAudioPlayer.preload = 'auto';
         }
         const audio = this.readingAudioPlayer;
-        audio.src = `/api/v1/conversations/${this.conversationId}/audio`;
+        audio.src = api.getConversationAudioStreamUrl(this.conversationId);
 
         const playBtn = document.getElementById('reading-play-btn');
         const seekbar = document.getElementById('reading-seekbar');
