@@ -7,6 +7,10 @@ export default {
     audioPlayer: null,
     playingSegmentId: null,
     playProgressInterval: null,
+    readingMode: true,
+    readingAudioPlayer: null,
+    readingTimeUpdateHandler: null,
+    readingParagraphs: [],
 
     async render(id) {
         this.conversationId = id;
@@ -64,7 +68,17 @@ export default {
                     <div class="content-card" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 16px; margin-bottom: 0; padding-bottom: 12px;">
                         <div class="card-header" style="margin-bottom: 12px;">
                             <h2>Transcript & Segments</h2>
-                            <span class="badge badge-info" id="detail-num-speakers">0 Speakers</span>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div class="view-mode-toggle">
+                                    <button class="view-mode-btn active" id="btn-reading-mode" title="Continuous reading with audio follow-along">
+                                        <i data-lucide="book-open" style="width: 14px; height: 14px;"></i> Leitura
+                                    </button>
+                                    <button class="view-mode-btn" id="btn-segment-mode" title="Individual segments with editing controls">
+                                        <i data-lucide="list" style="width: 14px; height: 14px;"></i> Segmentos
+                                    </button>
+                                </div>
+                                <span class="badge badge-info" id="detail-num-speakers">0 Speakers</span>
+                            </div>
                         </div>
                         <div class="segments-list" id="detail-segments-list">
                             <div class="loading-spinner-container">
@@ -182,6 +196,13 @@ export default {
         // Setup audio events
         this.audioPlayer.addEventListener('ended', () => this.handleAudioEnded());
         this.audioPlayer.addEventListener('pause', () => this.handleAudioEnded());
+
+        // Cleanup previous reading audio player
+        if (this.readingAudioPlayer) {
+            this.readingAudioPlayer.pause();
+            this.readingAudioPlayer.removeEventListener('timeupdate', this.readingTimeUpdateHandler);
+            this.readingAudioPlayer = null;
+        }
 
         if (this.pollTimeout) {
             clearTimeout(this.pollTimeout);
@@ -319,8 +340,351 @@ export default {
     },
 
     renderSegments() {
+        if (this.readingMode) {
+            this.renderReadingMode();
+        } else {
+            this.renderSegmentMode();
+        }
+    },
+
+    // Helper to hash speaker name to a deterministic color
+    _hashCode(str) {
+        let hash = 0;
+        const s = String(str || '');
+        for (let i = 0; i < s.length; i++) {
+            const char = s.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash |= 0;
+        }
+        return hash;
+    },
+
+    _speakerColors: ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'],
+
+    _getSpeakerColor(speakerStr) {
+        return this._speakerColors[Math.abs(this._hashCode(speakerStr)) % this._speakerColors.length];
+    },
+
+    /**
+     * Merge texts from consecutive segments, removing duplicate words at boundaries.
+     */
+    _mergeSegmentTexts(segments) {
+        if (!segments.length) return '';
+        
+        let merged = (segments[0].text || '').trim();
+        
+        for (let i = 1; i < segments.length; i++) {
+            const nextText = (segments[i].text || '').trim();
+            if (!nextText) continue;
+            if (!merged) { merged = nextText; continue; }
+            
+            // Get last N words of current and first N words of next (check up to 3 words overlap)
+            const currentWords = merged.split(/\s+/);
+            const nextWords = nextText.split(/\s+/);
+            
+            let overlapLen = 0;
+            // Check for overlapping boundary words (1 to 3 words)
+            for (let n = Math.min(3, currentWords.length, nextWords.length); n >= 1; n--) {
+                const tail = currentWords.slice(-n).map(w => w.toLowerCase().replace(/[.,!?;:]+$/g, ''));
+                const head = nextWords.slice(0, n).map(w => w.toLowerCase().replace(/[.,!?;:]+$/g, ''));
+                
+                if (tail.join(' ') === head.join(' ')) {
+                    overlapLen = n;
+                    break;
+                }
+            }
+            
+            if (overlapLen > 0) {
+                // Remove the overlapping words from the next segment's start
+                merged += ' ' + nextWords.slice(overlapLen).join(' ');
+            } else {
+                merged += ' ' + nextText;
+            }
+        }
+        
+        return merged.trim();
+    },
+
+    // ===== READING MODE =====
+    renderReadingMode() {
         const list = document.getElementById('detail-segments-list');
         if (!list || !this.conversation) return;
+
+        if (this.conversation.status === 'processing') {
+            list.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 60px 40px; display: flex; flex-direction: column; align-items: center; gap: 16px;">
+                    <div class="spinner" style="width: 32px; height: 32px; border-width: 3px; border-top-color: var(--primary);"></div>
+                    <div style="font-weight: 500; font-size: 1.1rem; color: var(--text);">Reprocessing Audio...</div>
+                    <p style="max-width: 400px; font-size: 0.85rem; line-height: 1.5; color: var(--text-muted);">
+                        The Whisper model is transcribing and the Pyannote diarization model is grouping speakers. You can leave this page; processing will continue in the background.
+                    </p>
+                </div>
+            `;
+            return;
+        }
+
+        const segments = this.conversation.transcript_segments || [];
+
+        if (segments.length === 0) {
+            list.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 40px;">
+                    No transcript segments generated yet.
+                </div>
+            `;
+            return;
+        }
+
+        // Sort segments chronologically
+        segments.sort((a, b) => a.start_offset - b.start_offset);
+
+        // Group consecutive segments by speaker into paragraphs
+        const paragraphs = [];
+        let currentPara = null;
+
+        for (const seg of segments) {
+            const speakerKey = String(seg.speaker_name || 'Unknown');
+            if (!currentPara || currentPara.speaker !== speakerKey) {
+                currentPara = {
+                    speaker: speakerKey,
+                    segments: [],
+                    startOffset: seg.start_offset,
+                    endOffset: seg.end_offset
+                };
+                paragraphs.push(currentPara);
+            }
+            currentPara.segments.push(seg);
+            currentPara.endOffset = seg.end_offset;
+        }
+
+        // Store for karaoke tracking
+        this.readingParagraphs = paragraphs;
+
+        // Build the continuous audio player
+        const playerHtml = `
+            <div class="reading-player" id="reading-player">
+                <button class="reading-player-btn" id="reading-play-btn" title="Play / Pause">
+                    <i data-lucide="play" style="width: 18px; height: 18px;" id="reading-play-icon"></i>
+                </button>
+                <div class="reading-player-timeline">
+                    <div class="reading-player-seekbar" id="reading-seekbar">
+                        <div class="reading-player-seekbar-fill" id="reading-seekbar-fill"></div>
+                    </div>
+                    <div class="reading-player-times">
+                        <span id="reading-current-time">0:00</span>
+                        <span id="reading-total-time">${this.conversation.duration ? this.formatDuration(this.conversation.duration) : '0:00'}</span>
+                    </div>
+                </div>
+                <button class="reading-player-speed" id="reading-speed-btn" title="Playback speed">1x</button>
+            </div>
+        `;
+
+        // Build paragraph blocks
+        const paragraphsHtml = paragraphs.map((para, idx) => {
+            const speakerStr = String(para.speaker || 'Unknown');
+            const speakerColor = this._getSpeakerColor(speakerStr);
+            const mergedText = this._mergeSegmentTexts(para.segments);
+            const timeLabel = `${this.formatDuration(para.startOffset)} – ${this.formatDuration(para.endOffset)}`;
+
+            return `
+                <div class="reading-paragraph" id="reading-para-${idx}" data-index="${idx}" data-start="${para.startOffset}" data-end="${para.endOffset}">
+                    <div class="reading-speaker-row">
+                        <span class="reading-speaker-label" style="color: ${speakerColor};">${speakerStr}</span>
+                        <span class="reading-time-label">${timeLabel}</span>
+                    </div>
+                    <div class="reading-text">${mergedText}</div>
+                </div>
+            `;
+        }).join('');
+
+        list.classList.add('reading-view');
+        list.innerHTML = playerHtml + `<div class="reading-transcript" id="reading-transcript">${paragraphsHtml}</div>`;
+
+        lucide.createIcons();
+        this.setupReadingModeInteractions();
+    },
+
+    setupReadingModeInteractions() {
+        // Initialize or reuse the audio player for full conversation audio
+        if (!this.readingAudioPlayer) {
+            this.readingAudioPlayer = new Audio();
+        }
+        const audio = this.readingAudioPlayer;
+        audio.src = `/api/v1/conversations/${this.conversationId}/audio`;
+
+        const playBtn = document.getElementById('reading-play-btn');
+        const seekbar = document.getElementById('reading-seekbar');
+        const seekbarFill = document.getElementById('reading-seekbar-fill');
+        const currentTimeEl = document.getElementById('reading-current-time');
+        const totalTimeEl = document.getElementById('reading-total-time');
+        const speedBtn = document.getElementById('reading-speed-btn');
+        const transcript = document.getElementById('reading-transcript');
+        const list = document.getElementById('detail-segments-list');
+
+        // Play / Pause toggle
+        if (playBtn) {
+            playBtn.addEventListener('click', () => {
+                if (audio.paused) {
+                    audio.play().catch(e => {
+                        console.error('Audio playback failed:', e);
+                        window.showToast('Failed to play audio.', 'danger');
+                    });
+                } else {
+                    audio.pause();
+                }
+            });
+        }
+
+        // Update play/pause icon
+        audio.addEventListener('play', () => {
+            const icon = document.getElementById('reading-play-icon');
+            if (icon) {
+                icon.setAttribute('data-lucide', 'pause');
+                lucide.createIcons();
+            }
+        });
+
+        audio.addEventListener('pause', () => {
+            const icon = document.getElementById('reading-play-icon');
+            if (icon) {
+                icon.setAttribute('data-lucide', 'play');
+                lucide.createIcons();
+            }
+        });
+
+        // Update total time when metadata loads
+        audio.addEventListener('loadedmetadata', () => {
+            if (totalTimeEl) totalTimeEl.textContent = this.formatDuration(audio.duration);
+        });
+
+        // Seekbar click
+        if (seekbar) {
+            seekbar.addEventListener('click', (e) => {
+                if (!audio.duration) return;
+                const rect = seekbar.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                audio.currentTime = pct * audio.duration;
+            });
+        }
+
+        // Speed control
+        const speeds = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75];
+        let speedIndex = 0;
+        if (speedBtn) {
+            speedBtn.addEventListener('click', () => {
+                speedIndex = (speedIndex + 1) % speeds.length;
+                audio.playbackRate = speeds[speedIndex];
+                speedBtn.textContent = `${speeds[speedIndex]}x`;
+            });
+        }
+
+        // Timeupdate — karaoke highlight + auto-scroll
+        if (this.readingTimeUpdateHandler) {
+            audio.removeEventListener('timeupdate', this.readingTimeUpdateHandler);
+        }
+
+        let lastActiveIdx = -1;
+
+        this.readingTimeUpdateHandler = () => {
+            const currentTime = audio.currentTime;
+            
+            // Update seekbar
+            if (seekbarFill && audio.duration) {
+                seekbarFill.style.width = `${(currentTime / audio.duration) * 100}%`;
+            }
+            if (currentTimeEl) {
+                currentTimeEl.textContent = this.formatDuration(currentTime);
+            }
+
+            // Find active paragraph
+            let activeIdx = -1;
+            for (let i = 0; i < this.readingParagraphs.length; i++) {
+                const para = this.readingParagraphs[i];
+                if (currentTime >= para.startOffset && currentTime < para.endOffset) {
+                    activeIdx = i;
+                    break;
+                }
+            }
+            // If between paragraphs, highlight the next one approaching
+            if (activeIdx === -1) {
+                for (let i = 0; i < this.readingParagraphs.length; i++) {
+                    if (currentTime < this.readingParagraphs[i].startOffset) {
+                        // We're in a gap before this paragraph
+                        // Keep the previous as active if close enough
+                        if (i > 0 && currentTime - this.readingParagraphs[i-1].endOffset < 2) {
+                            activeIdx = i - 1;
+                        }
+                        break;
+                    }
+                }
+                // If past all paragraphs
+                if (activeIdx === -1 && this.readingParagraphs.length > 0) {
+                    const last = this.readingParagraphs[this.readingParagraphs.length - 1];
+                    if (currentTime >= last.startOffset) {
+                        activeIdx = this.readingParagraphs.length - 1;
+                    }
+                }
+            }
+
+            if (activeIdx !== lastActiveIdx) {
+                // Update CSS classes on all paragraphs
+                document.querySelectorAll('.reading-paragraph').forEach((el, i) => {
+                    el.classList.remove('active', 'past');
+                    if (i === activeIdx) {
+                        el.classList.add('active');
+                    } else if (i < activeIdx) {
+                        el.classList.add('past');
+                    }
+                });
+
+                // Auto-scroll the active paragraph into view
+                if (activeIdx >= 0) {
+                    const activeEl = document.getElementById(`reading-para-${activeIdx}`);
+                    if (activeEl && list) {
+                        const containerRect = list.getBoundingClientRect();
+                        const elRect = activeEl.getBoundingClientRect();
+                        
+                        // Only scroll if element is not visible or near edges
+                        const isVisible = elRect.top >= containerRect.top && elRect.bottom <= containerRect.bottom;
+                        if (!isVisible) {
+                            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                }
+
+                lastActiveIdx = activeIdx;
+            }
+        };
+
+        audio.addEventListener('timeupdate', this.readingTimeUpdateHandler);
+
+        // Click-to-seek on paragraphs
+        if (transcript) {
+            transcript.addEventListener('click', (e) => {
+                const paraEl = e.target.closest('.reading-paragraph');
+                if (!paraEl) return;
+                const startTime = parseFloat(paraEl.dataset.start);
+                if (!isNaN(startTime)) {
+                    audio.currentTime = startTime;
+                    if (audio.paused) {
+                        audio.play().catch(() => {});
+                    }
+                }
+            });
+        }
+    },
+
+    // ===== SEGMENT MODE (original) =====
+    renderSegmentMode() {
+        const list = document.getElementById('detail-segments-list');
+        if (!list || !this.conversation) return;
+
+        // Remove reading-view class
+        list.classList.remove('reading-view');
+
+        // Pause reading audio if playing
+        if (this.readingAudioPlayer && !this.readingAudioPlayer.paused) {
+            this.readingAudioPlayer.pause();
+        }
 
         if (this.conversation.status === 'processing') {
             list.innerHTML = `
@@ -371,22 +735,9 @@ export default {
             currentGroup.segments.push(seg);
         }
 
-        // Helper to hash speaker name to a deterministic color
-        const hashCode = (str) => {
-            let hash = 0;
-            const s = String(str || '');
-            for (let i = 0; i < s.length; i++) {
-                const char = s.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash |= 0;
-            }
-            return hash;
-        };
-        const speakerColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
-
         let groupsHtml = groups.map(group => {
             const speakerStr = String(group.speaker || 'Unknown');
-            const speakerColor = speakerColors[Math.abs(hashCode(speakerStr)) % speakerColors.length];
+            const speakerColor = this._getSpeakerColor(speakerStr);
             const isUnknown = speakerStr.startsWith('Unknown_') || speakerStr === 'Unknown';
             const bgStyle = isUnknown 
                 ? 'background-color: rgba(255, 255, 255, 0.04); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);' 
@@ -671,6 +1022,30 @@ export default {
                 window.open(url, '_blank');
             });
         });
+
+        // View Mode Toggle
+        const btnReadingMode = document.getElementById('btn-reading-mode');
+        const btnSegmentMode = document.getElementById('btn-segment-mode');
+
+        if (btnReadingMode) {
+            btnReadingMode.addEventListener('click', () => {
+                if (this.readingMode) return;
+                this.readingMode = true;
+                btnReadingMode.classList.add('active');
+                btnSegmentMode.classList.remove('active');
+                this.renderSegments();
+            });
+        }
+
+        if (btnSegmentMode) {
+            btnSegmentMode.addEventListener('click', () => {
+                if (!this.readingMode) return;
+                this.readingMode = false;
+                btnSegmentMode.classList.add('active');
+                btnReadingMode.classList.remove('active');
+                this.renderSegments();
+            });
+        }
     },
 
 
