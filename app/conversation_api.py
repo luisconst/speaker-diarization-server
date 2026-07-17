@@ -31,6 +31,7 @@ from .services import (
     recalculate_emotion_profile,
     recalculate_speaker_embedding,
     resolve_audio_path,
+    generate_markdown,
 )
 import logging
 import numpy as np
@@ -1775,38 +1776,7 @@ async def export_conversation_transcript(
         )
 
     elif format == "markdown":
-        import json as json_module
-        participants = list(set(s.speaker_name for s in segments if s.speaker_name))
-        tags_list = json_module.loads(conversation.tags) if conversation.tags else []
-        
-        md = '---\n'
-        md += f'title: "{conversation.title or "transcript_" + str(conversation_id)}"\n'
-        md += f'date: {conversation.start_time.strftime("%Y-%m-%d") if conversation.start_time else "unknown"}\n'
-        md += f'category: {conversation.category or "outro"}\n'
-        if participants:
-            md += f'participants: {json_module.dumps(participants, ensure_ascii=False)}\n'
-        if tags_list:
-            md += f'tags: {json_module.dumps(tags_list, ensure_ascii=False)}\n'
-        if conversation.duration:
-            mins = int(conversation.duration // 60)
-            md += f'duration: "{mins} min"\n'
-        md += '---\n\n'
-        
-        # Add summary markdown directly (which contains Resumo, Ações, Notas, etc.)
-        if conversation.summary:
-            md += conversation.summary.strip() + "\n\n"
-        
-        # Add transcript grouped by speaker
-        md += '## Transcrição\n\n'
-        current_speaker = None
-        for s in segments:
-            speaker = s.speaker_name or 'Unknown'
-            time_str = format_seconds_to_timestamp(s.start_offset)
-            if speaker != current_speaker:
-                md += f'\n**{speaker}** ({time_str})\n'
-                current_speaker = speaker
-            md += f'> {s.text or ""}\n'
-            
+        md = generate_markdown(conversation, segments)
         from fastapi.responses import Response
         return Response(
             content=md,

@@ -28,6 +28,13 @@ class SettingsUpdateRequest(BaseModel):
     watch_directory: Optional[str] = None
     export_directory: Optional[str] = None
     auto_summarize: Optional[bool] = None
+    # Markdown export format
+    md_exclude_unknowns: Optional[bool] = None
+    md_participant_template: Optional[str] = None
+    md_frontmatter_map: Optional[str] = None
+    md_transcript_header: Optional[str] = None
+    md_speaker_format: Optional[str] = None
+    md_custom_properties: Optional[str] = None
 
 
 

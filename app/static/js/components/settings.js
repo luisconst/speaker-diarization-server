@@ -192,6 +192,64 @@ export default {
                         </label>
                     </div>
 
+                    <!-- Obsidian & Markdown Export Config -->
+                    <div class="form-group" style="margin-bottom: 25px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 25px;">
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 8px; padding: 16px;">
+                            <h3 style="font-family: var(--font-heading); font-size: 1.1rem; margin-bottom: 6px;">Obsidian & Markdown Export Formatting</h3>
+                            <p style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.4;">
+                                Configure how markdown transcripts are formatted for your Obsidian Vault.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="checkbox-control">
+                            <input type="checkbox" id="md_exclude_unknowns" />
+                            <span>Exclude Unknown speakers (e.g. Unknown_1) from participants frontmatter</span>
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <!-- Participant Template -->
+                        <div class="form-group">
+                            <label for="md_participant_template">Participant Entry Template</label>
+                            <input type="text" id="md_participant_template" class="form-control" placeholder="e.g. [[08 People/{name}]]" />
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Use <code>{name}</code> to inject the speaker's name. Example: <code>[[08 People/{name}]]</code></span>
+                        </div>
+
+                        <!-- Transcript Header -->
+                        <div class="form-group">
+                            <label for="md_transcript_header">Transcript Section Header</label>
+                            <input type="text" id="md_transcript_header" class="form-control" placeholder="Transcrição" />
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">The header of the transcript block. Default: <code>Transcrição</code></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <!-- Speaker Format -->
+                        <div class="form-group">
+                            <label for="md_speaker_format">Speaker Header Format (Body)</label>
+                            <input type="text" id="md_speaker_format" class="form-control" placeholder="**{name}** ({time})" />
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">How speaker headings are formatted in the transcript body. Use <code>{name}</code> and <code>{time}</code>.</span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <!-- Frontmatter Property Map -->
+                        <div class="form-group">
+                            <label for="md_frontmatter_map">Frontmatter Key Remapping (JSON)</label>
+                            <textarea id="md_frontmatter_map" class="form-control" style="height: 100px; font-family: monospace; font-size: 0.82rem; resize: vertical;" placeholder='{&#10;  "title": "titulo",&#10;  "date": "data",&#10;  "participants": "participantes"&#10;}'></textarea>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Remap default YAML properties (title, date, category, participants, tags, duration). Leave blank for default keys.</span>
+                        </div>
+
+                        <!-- Custom Properties -->
+                        <div class="form-group">
+                            <label for="md_custom_properties">Custom Frontmatter Properties (JSON)</label>
+                            <textarea id="md_custom_properties" class="form-control" style="height: 100px; font-family: monospace; font-size: 0.82rem; resize: vertical;" placeholder='{&#10;  "type": "meeting-note",&#10;  "project": "[[Projects/MyProject]]"&#10;}'></textarea>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Add custom YAML fields to the frontmatter (can be static values or wikilinks).</span>
+                        </div>
+                    </div>
+
                     <div class="form-group" style="margin-bottom: 25px;">
                         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 8px; padding: 16px;">
                             <h3 style="font-family: var(--font-heading); font-size: 1.1rem; margin-bottom: 6px;">Local Ollama LLM Connection</h3>
@@ -363,6 +421,34 @@ export default {
             }
         });
 
+        // Populate new markdown text fields
+        const mdFields = ['md_participant_template', 'md_transcript_header', 'md_speaker_format'];
+        mdFields.forEach(field => {
+            const el = document.getElementById(field);
+            if (el && settings[field] !== undefined && settings[field] !== null) {
+                el.value = settings[field];
+            }
+        });
+
+        // Format and populate JSON textareas
+        const jsonFields = ['md_frontmatter_map', 'md_custom_properties'];
+        jsonFields.forEach(field => {
+            const el = document.getElementById(field);
+            if (el) {
+                const val = settings[field];
+                if (val) {
+                    try {
+                        const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+                        el.value = JSON.stringify(parsed, null, 2);
+                    } catch (e) {
+                        el.value = val;
+                    }
+                } else {
+                    el.value = '';
+                }
+            }
+        });
+
         // Set slider indicator values
         const speakLabel = document.getElementById('val-speaker-threshold');
         if (speakLabel && settings.speaker_threshold) {
@@ -376,7 +462,7 @@ export default {
         // Populate checkboxes
         const checkboxes = [
             'filter_hallucinations', 'enable_personalized_emotions',
-            'offline_mode', 'auto_summarize'
+            'offline_mode', 'auto_summarize', 'md_exclude_unknowns'
         ];
         checkboxes.forEach(field => {
             const el = document.getElementById(field);
@@ -433,12 +519,13 @@ export default {
             'speaker_threshold', 'emotion_threshold', 'context_padding',
             'silence_duration', 'whisper_model', 'whisper_language',
             'cleanup_vram_threshold_gb', 'watch_directory', 'export_directory',
-            'ollama_url', 'ollama_model'
+            'ollama_url', 'ollama_model',
+            'md_participant_template', 'md_transcript_header', 'md_speaker_format'
         ];
 
         const checkboxes = [
             'filter_hallucinations', 'enable_personalized_emotions',
-            'offline_mode', 'auto_summarize'
+            'offline_mode', 'auto_summarize', 'md_exclude_unknowns'
         ];
 
         const payload = {};
@@ -463,6 +550,26 @@ export default {
                 payload[field] = el.checked;
             }
         });
+
+        // Validate and grab JSON fields
+        const jsonFields = ['md_frontmatter_map', 'md_custom_properties'];
+        for (const field of jsonFields) {
+            const el = document.getElementById(field);
+            if (el) {
+                const val = el.value.trim();
+                if (val) {
+                    try {
+                        const parsed = JSON.parse(val);
+                        payload[field] = JSON.stringify(parsed);
+                    } catch (e) {
+                        window.showToast(`Invalid JSON in field: ${field}. Please correct it before saving.`, 'danger');
+                        return;
+                    }
+                } else {
+                    payload[field] = null;
+                }
+            }
+        }
 
         // Grab custom prompts object and serialize to JSON
         const customPromptsObj = {};

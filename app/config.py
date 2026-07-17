@@ -56,6 +56,13 @@ class VoiceSettings(BaseModel):
     watch_directory: str = Field(default="", description="Directory to watch for new audio files")
     export_directory: str = Field(default="", description="Directory to export markdown files")
     auto_summarize: bool = Field(default=False, description="Automatically summarize new conversations")
+    # Markdown export format (Obsidian-compatible)
+    md_exclude_unknowns: bool = Field(default=True, description="Exclude Unknown_* speakers from participants list")
+    md_participant_template: str = Field(default="{name}", description="Template for participant entries. Use {name} for speaker name. E.g. [[08 People/{name}]]")
+    md_frontmatter_map: Optional[str] = Field(default=None, description="JSON string mapping default property names to custom names. E.g. {\"title\":\"titulo\",\"participants\":\"participantes\"}")
+    md_transcript_header: str = Field(default="Transcrição", description="Section header for the transcript block")
+    md_speaker_format: str = Field(default="**{name}** ({time})", description="Template for speaker headers. Use {name} and {time}")
+    md_custom_properties: Optional[str] = Field(default=None, description="JSON string of extra frontmatter key-value pairs. E.g. {\"type\":\"meeting-note\",\"project\":\"[[Projects/MyProject]]\"}")
 
 
 

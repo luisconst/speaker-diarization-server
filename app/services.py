@@ -332,67 +332,147 @@ def cleanup_orphaned_unknowns(db: Session, engine=None) -> List[str]:
     return deleted
 
 
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds into HH:MM:SS timestamp string."""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def generate_markdown(conversation, segments, settings=None) -> str:
+    """
+    Generate an Obsidian-compatible markdown string for a conversation.
+
+    Uses settings for:
+    - md_exclude_unknowns: filter Unknown_* from participants
+    - md_participant_template: wikilink template e.g. "[[08 People/{name}]]"
+    - md_frontmatter_map: rename YAML frontmatter keys
+    - md_custom_properties: add extra key-value pairs to frontmatter
+    - md_transcript_header: section header for the transcript
+    - md_speaker_format: template for speaker headers in transcript body
+
+    Args:
+        conversation: Conversation model instance
+        segments: list of ConversationSegment, already sorted by start_offset
+        settings: VoiceSettings instance (loaded from config if None)
+    """
+    if settings is None:
+        from .config import get_config
+        settings = get_config().get_settings()
+
+    exclude_unknowns = getattr(settings, 'md_exclude_unknowns', True)
+    participant_tpl = getattr(settings, 'md_participant_template', '{name}') or '{name}'
+    frontmatter_map_raw = getattr(settings, 'md_frontmatter_map', None)
+    transcript_header = getattr(settings, 'md_transcript_header', 'Transcrição') or 'Transcrição'
+    speaker_fmt = getattr(settings, 'md_speaker_format', '**{name}** ({time})') or '**{name}** ({time})'
+    custom_props_raw = getattr(settings, 'md_custom_properties', None)
+
+    # Parse JSON settings
+    frontmatter_map = {}
+    if frontmatter_map_raw:
+        try:
+            frontmatter_map = json.loads(frontmatter_map_raw) if isinstance(frontmatter_map_raw, str) else frontmatter_map_raw
+        except Exception:
+            pass
+
+    custom_properties = {}
+    if custom_props_raw:
+        try:
+            custom_properties = json.loads(custom_props_raw) if isinstance(custom_props_raw, str) else custom_props_raw
+        except Exception:
+            pass
+
+    def _prop_name(default_name: str) -> str:
+        """Apply frontmatter property name mapping."""
+        return frontmatter_map.get(default_name, default_name)
+
+    # Build participants list
+    all_speakers = list(set(s.speaker_name for s in segments if s.speaker_name))
+    if exclude_unknowns:
+        all_speakers = [sp for sp in all_speakers if not sp.startswith('Unknown_') and sp != 'Unknown']
+
+    # Apply participant template
+    formatted_participants = [participant_tpl.replace('{name}', sp) for sp in all_speakers]
+
+    tags_list = json.loads(conversation.tags) if conversation.tags else []
+
+    # --- Build YAML frontmatter ---
+    md = '---\n'
+    md += f'{_prop_name("title")}: "{conversation.title or "transcript_" + str(conversation.id)}"\n'
+    md += f'{_prop_name("date")}: {conversation.start_time.strftime("%Y-%m-%d") if conversation.start_time else "unknown"}\n'
+    md += f'{_prop_name("category")}: {conversation.category or "outro"}\n'
+
+    if formatted_participants:
+        md += f'{_prop_name("participants")}:\n'
+        for p in formatted_participants:
+            md += f'  - "{p}"\n'
+
+    if tags_list:
+        md += f'{_prop_name("tags")}:\n'
+        for tag in tags_list:
+            md += f'  - {tag}\n'
+
+    if conversation.duration:
+        mins = int(conversation.duration // 60)
+        md += f'{_prop_name("duration")}: "{mins} min"\n'
+
+    # Add custom properties
+    for key, value in custom_properties.items():
+        md += f'{key}: {value}\n'
+
+    md += '---\n\n'
+
+    # --- Summary ---
+    if conversation.summary:
+        md += conversation.summary.strip() + "\n\n"
+
+    # --- Transcript ---
+    md += f'## {transcript_header}\n\n'
+    current_speaker = None
+    for s in segments:
+        speaker = s.speaker_name or 'Unknown'
+        time_str = _format_timestamp(s.start_offset)
+        if speaker != current_speaker:
+            header = speaker_fmt.replace('{name}', speaker).replace('{time}', time_str)
+            md += f'\n{header}\n'
+            current_speaker = speaker
+        md += f'> {s.text or ""}\n'
+
+    return md
+
+
 def export_conversation_to_directory(conversation_id: int, db: Session):
     """
     Generate markdown for a conversation and save it to settings.export_directory
-    if configured.
+    if configured. Uses generate_markdown() with current settings.
     """
     from .config import get_config
     config = get_config()
     settings = config.get_settings()
-    
+
     export_dir = getattr(settings, 'export_directory', '')
     if not export_dir or not os.path.exists(export_dir):
         return
-        
+
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         return
-        
+
     import re
-    
+
     # Safe title
     safe_title = re.sub(r'[^\w\s-]', '', conversation.title or f"transcript_{conversation_id}")
     safe_title = safe_title.strip().replace(' ', '_')
     if not safe_title:
         safe_title = f"transcript_{conversation_id}"
-        
+
     segments = db.query(ConversationSegment).filter(
         ConversationSegment.conversation_id == conversation_id
     ).order_by(ConversationSegment.start_offset.asc()).all()
-    
-    participants = list(set(s.speaker_name for s in segments if s.speaker_name))
-    tags_list = json.loads(conversation.tags) if conversation.tags else []
-    
-    md = '---\n'
-    md += f'title: "{conversation.title or "transcript_" + str(conversation_id)}"\n'
-    md += f'date: {conversation.start_time.strftime("%Y-%m-%d") if conversation.start_time else "unknown"}\n'
-    md += f'category: {conversation.category or "outro"}\n'
-    if participants:
-        md += f'participants: {json.dumps(participants, ensure_ascii=False)}\n'
-    if tags_list:
-        md += f'tags: {json.dumps(tags_list, ensure_ascii=False)}\n'
-    if conversation.duration:
-        mins = int(conversation.duration // 60)
-        md += f'duration: "{mins} min"\n'
-    md += '---\n\n'
-    
-    if conversation.summary:
-        md += conversation.summary.strip() + "\n\n"
-        
-    md += '## Transcrição\n\n'
-    current_speaker = None
-    for s in segments:
-        speaker = s.speaker_name or 'Unknown'
-        h = int(s.start_offset // 3600)
-        m = int((s.start_offset % 3600) // 60)
-        s_val = int(s.start_offset % 60)
-        time_str = f"{h:02d}:{m:02d}:{s_val:02d}"
-        if speaker != current_speaker:
-            md += f'\n**{speaker}** ({time_str})\n'
-            current_speaker = speaker
-        md += f'> {s.text or ""}\n'
-        
+
+    md = generate_markdown(conversation, segments, settings)
+
     file_path = os.path.join(export_dir, f"{safe_title}.md")
     try:
         with open(file_path, "w", encoding="utf-8") as f:
